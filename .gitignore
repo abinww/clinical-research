@@ -1,0 +1,39 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.python-version
+.venv/
+venv/
+env/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Local secrets and private configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Generated clinical data should stay outside the shared skill repository.
+raw/
+source/
+drug/
+indication/
+trials/
+attachments/
