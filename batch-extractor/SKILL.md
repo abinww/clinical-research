@@ -34,11 +34,14 @@ exec command="bash scripts/find_unprocessed.sh"
 
 参考 `../schema/summary-spec.md` 的格式要求，分析内容并生成摘要
 
-### 2.3 保存到 source/
+### 2.3 保存到 summary/
+
+摘要按药品分子目录组织。先按摘要 YAML 里的 `drug` 字段确定药品名（沿用 drug-spec.md 优先级规则：开发代码 > 短名 > 中文通用名 > 英文通用名），再创建对应的子目录。
 
 调用：
 ```
-write path={source_dir}/{文件名}.md content={摘要内容}
+mkdir -p {summary_dir}/{药品名}
+write path={summary_dir}/{药品名}/{文件名}.md content={摘要内容}
 ```
 
 **文件名冲突处理**：
@@ -49,7 +52,7 @@ write path={source_dir}/{文件名}.md content={摘要内容}
 
 记录处理结果：
 - raw_file: "raw/xxx.md"
-- source_file: "药品@适应症_P2.md"
+- summary_file: "{药品名}/药品@适应症_P2.md"
 - status: success 或 failed
 
 ## Step 3: 输出报告
@@ -62,8 +65,8 @@ write path={source_dir}/{文件名}.md content={摘要内容}
 - 待处理: K 个文件
 
 处理结果:
-✓ {raw文件名1}.md → {source文件名1}.md
-✓ {raw文件名2}.md → {source文件名2}.md
+✓ {raw文件名1}.md → {summary子目录}/{summary文件名1}.md
+✓ {raw文件名2}.md → {summary子目录}/{summary文件名2}.md
 ✗ {raw文件名3}.md → 处理失败
 
 总计: 成功 X 个, 失败 Y 个
@@ -71,9 +74,9 @@ write path={source_dir}/{文件名}.md content={摘要内容}
 
 ## 边缘情况处理
 
-### {source_dir} 文件无 source_raw 字段
+### {summary_dir} 文件无 source_raw 字段
 
-如果 {source_dir} 文件的 YAML 中没有 `source_raw` 字段：
+如果 {summary_dir} 文件的 YAML 中没有 `source_raw` 字段（字段名保留，指向 raw/ 目录）：
 - 跳过该文件，不纳入已处理列表
 - 该文件被视为独立生成的摘要，不参与去重判断
 
@@ -88,4 +91,4 @@ write path={source_dir}/{文件名}.md content={摘要内容}
 如果生成摘要失败或返回空内容：
 - 记录为处理失败
 - 继续处理下一个文件
-- 不保存空文件到 {source_dir}
+- 不保存空文件到 {summary_dir}

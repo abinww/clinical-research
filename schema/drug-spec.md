@@ -4,6 +4,14 @@
 
 ---
 
+## 数据来源边界
+
+`drug/` 文件只能基于已经通过数据一致性审核的 `summary/` 文件生成或更新。不得直接基于 `raw/` 文件、外部网页、PDF 或模型记忆生成药品索引数据。
+
+`summary/` 目录按药品分子目录组织：`summary/{药品名}/{药品名}@{适应症}.md`。
+
+如果关联 `summary/` 文件缺失、未完成数据一致性审核，或审核结果存在 `FAIL`，必须停止更新 `drug/`。
+
 ## 文件命名规则
 
 - **格式**: `{药品名称}.md`
@@ -100,7 +108,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 | 2024-12 | ESMO Asia | 6mg/kg | 37 | 56.2% | 89.0% | — | — | 剂量探索 |
 ```
 
-> 来源: [[source/{文件名1}.md]] | [[source/{文件名2}.md]]
+> 来源: [[summary/{药品名}/{文件名1}.md]] | [[summary/{药品名}/{文件名2}.md]]
 ```
 
 #### 固定列
@@ -252,7 +260,7 @@ updated: 2025-05-31
 | 2026-05 | ASCO | ABC123 | 200 | 55.0% | 88.5% | 11.14mo | 21.0% | HR 0.60, P<0.001 |
 | 2026-05 | ASCO | Standard Therapy | 199 | 38.5% | 77.0% | 6.90mo | 18.5% | 对照组 |
 
-> 来源: [[source/ABC123@Example_Cancer_1L.md]]
+> 来源: [[summary/ABC123/ABC123@Example_Cancer_1L.md]]
 
 ### 示例肿瘤后线 (Example Cancer Later-line)
 
@@ -260,7 +268,7 @@ updated: 2025-05-31
 |------|------|------|:-:|:---:|:---:|:----:|:-------:|------|
 | 2025-06 | ASCO | Biomarker-A阳性 | 33 | 45.5% | 84.8% | — | 24.2% | 首次数据 |
 
-> 来源: [[source/ABC123@Example_Cancer_Later-line_ASCO2025.md]]
+> 来源: [[summary/ABC123/ABC123@Example_Cancer_Later-line_ASCO2025.md]]
 
 ## 关键里程碑
 

@@ -32,7 +32,7 @@ env/
 
 # Generated clinical data should stay outside the shared skill repository.
 raw/
-source/
+summary/
 drug/
 indication/
 trials/

@@ -64,14 +64,14 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 | [{药品A}](../drug/{药品A}.md) | 公司A | Phase III | 41.4% | 11.3mo | 22.1mo | 3级AE 25% | ASCO 2026 |
 | [{药品B}](../drug/{药品B}.md) | 公司B | Phase II | 35.2% | 8.5mo | N/A | 3级AE 18% | ESMO 2025 |
 
-> 来源: [[source/{文件1}.md]] | [[source/{文件2}.md]]
+> 来源: [[summary/{药品1}/{文件1}.md]] | [[summary/{药品2}/{文件2}.md]]
 ```
 
 **表格列说明**：
 - **药品**：链接到药品索引文件
 - **公司**：研发公司名称
 - **阶段**：临床阶段（Phase I/II/III）
-- **ORR/mPFS/mOS**：核心疗效数据，从 source 文件提取
+- **ORR/mPFS/mOS**：核心疗效数据，从 summary 文件提取
 - **安全性要点**：关键不良事件摘要
 - **最新进展**：最近数据发布的会议/日期
 
@@ -95,7 +95,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 |------|-----|------|-----|
 | 药品A | 41.4% | 34.5% | 87.9% |
 
-> 来源: [[source/xxx.md]]
+> 来源: [[summary/{药品}/xxx.md]]
 
 #### PFS 对比
 
@@ -103,7 +103,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 |------|------|-----|---------|
 | 药品A | 11.3mo | 0.62 | <0.0001 |
 
-> 来源: [[source/xxx.md]]
+> 来源: [[summary/{药品}/xxx.md]]
 ```
 
 ### 4. 安全性对比（可选）
@@ -115,7 +115,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 |------|-----------|--------|-----------|
 | 药品A | 25.3% | 恶心、疲乏 | 5.2% |
 
-> 来源: [[source/xxx.md]]
+> 来源: [[summary/{药品}/xxx.md]]
 ```
 
 ### 5. 数据时间线
@@ -154,7 +154,7 @@ updated: 2025-05-31
 | [ABC123](../drug/ABC123.md) | BigPharma | Phase III | 75.6% | 11.14mo | N/A | ≥3级TRAE 66.9% | ASCO 2026 |
 | [ABC456](../drug/ABC456.md) | GlobalPharma | Phase III | 66.5% | 6.90mo | N/A | ≥3级TRAE 62.3% | EXAMPLE-407 |
 
-> 来源: [[source/ABC123@Example_Cancer_1L.md]] | [[source/ABC456@Example_Cancer_1L.md]]
+> 来源: [[summary/ABC123/ABC123@Example_Cancer_1L.md]] | [[summary/ABC456/ABC456@Example_Cancer_1L.md]]
 
 ## 数据时间线
 
@@ -177,7 +177,7 @@ updated: 2025-05-31
 
 ### 线数判断规则
 
-从 source 文件判断治疗线数：
+从 summary 文件判断治疗线数：
 - 检查 `trial_name` 或正文中是否有 "first-line"、"1L"、"一线" 等关键词
 - 检查入组人群是否为"初治"、"既往未接受治疗"
 - 无法判断时默认为 `1L` 或留空
@@ -195,6 +195,6 @@ updated: 2025-05-31
 - [ ] 在研药品 表格横向对比有效性和安全性，表格后有 `> 来源:` 行
 - [ ] 表格列名一致
 - [ ] 药品链接正确（指向 drug/*.md）
-- [ ] 来源链接使用 `[[source/...]]` 内联格式
+- [ ] 来源链接使用 `[[summary/{药品}/...]]` 内联格式
 - [ ] 按阶段排序（Phase III优先）
 - [ ] 数据时间线 按时间排序

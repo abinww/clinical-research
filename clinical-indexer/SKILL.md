@@ -14,13 +14,19 @@ description: |
 ## Configuration
 
 读取 `../config.yaml` 获取数据目录路径：
-- `source_dir`: 规范摘要目录
+- `summary_dir`: 规范摘要目录（按药品分子目录组织：`summary/{药品名}/`）
 - `drug_dir`: 药品索引保存目录
 - `indication_dir`: 适应症索引保存目录
 
-## Step 1: 扫描 {source_dir} 目录
+## Step 1: 扫描 {summary_dir} 目录
 
-列出所有 `.md` 文件
+递归列出所有 `.md` 文件（每个药品子目录下的全部 summary 文件）：
+
+```bash
+find ${summary_dir} -mindepth 2 -name "*.md" -type f
+```
+
+mindepth 2 跳过 summary_dir 顶层可能存在的清单文件（如 INDEX.md），只采集各药品子目录下的摘要。
 
 ## Step 2: 解析 frontmatter
 
@@ -32,7 +38,7 @@ description: |
 - `phase`: 临床阶段
 - `conference`: 会议名称
 - `trial_name`: 试验名称
-- `source_raw`: 关联的 raw 文件
+- `source_raw`: 关联的 raw 文件（字段名保留，指向 raw/ 目录）
 - `source_date`: 数据日期
 - `status`: 数据状态（空=正常，orphaned=来源丢失）
 
@@ -43,16 +49,16 @@ description: |
 **按药品分组**:
 ```
 drugs = {
-  "药品A": [source1, source2, ...],
-  "药品B": [source3, ...]
+  "药品A": [summary1, summary2, ...],
+  "药品B": [summary3, ...]
 }
 ```
 
 **按适应症分组**:
 ```
 indications = {
-  "适应症X": [source1, source3, ...],
-  "适应症Y": [source2, ...]
+  "适应症X": [summary1, summary3, ...],
+  "适应症Y": [summary2, ...]
 }
 ```
 
@@ -86,7 +92,7 @@ companies: [公司A, 公司B]
 
 | 试验 | 阶段 | 关键数据 | 来源 |
 |------|------|----------|------|
-| [试验名](#) | Phase III | ORR 41.4%, mPFS 11.3mo | [摘要](../source/药品@适应症A.md) |
+| [试验名](#) | Phase III | ORR 41.4%, mPFS 11.3mo | [摘要](../summary/药品A/药品A@适应症A.md) |
 
 ### 适应症B
 
@@ -97,6 +103,8 @@ companies: [公司A, 公司B]
 - YYYY-MM: 适应症A Phase III 数据发布
 - YYYY-MM: 适应症B Phase II 数据发布
 ```
+
+来源链接必须使用 vault 绝对 wikilink 路径 `[[summary/{药品名}/{文件名}.md]]`，或与 drug-spec.md 一致的相对 markdown 链接 `../summary/{药品名}/{文件名}.md`。
 
 ## Step 5: 生成适应症索引
 
@@ -132,42 +140,44 @@ aliases: [别名1, 别名2]
 - YYYY-MM: 药品B Phase III 失败
 ```
 
+适应症索引中 `[药品](../drug/药品.md)` 链接保持相对路径不变（指向 drug/ 平铺索引）。
+
 ## Step 6: 生成汇总清单
 
-生成 {source_dir}/drug.md 和 {source_dir}/indication.md 索引清单：
+在 `summary_dir` 顶层生成 `INDEX.md` 药品/适应症清单（不要写到任何药品子目录下）：
 
-**drug.md**:
+**INDEX.md** 包含两个章节：
+
 ```markdown
 # 药品索引
 
 | 药品 | 适应症数 | 最新数据 |
 |------|---------|---------|
-| [药品A](drug/药品A.md) | 3 | 2024-05 |
-```
+| [药品A](../drug/药品A.md) | 3 | 2024-05 |
 
-**indication.md**:
-```markdown
 # 适应症索引
 
 | 适应症 | 药品数 | 最新数据 |
 |--------|-------|---------|
-| [适应症X](indication/适应症X.md) | 5 | 2024-05 |
+| [适应症X](../indication/适应症X.md) | 5 | 2024-05 |
 ```
+
+清单路径：`{summary_dir}/INDEX.md`。
 
 ## Output
 
 报告：
 ```
 索引更新完成:
-- 扫描 {source_dir}: N 个文件
+- 扫描 {summary_dir}: N 个文件
 - 药品索引: 生成 M 个药品页
 - 适应症索引: 生成 K 个适应症页
-- 汇总清单: drug.md, indication.md
+- 汇总清单: {summary_dir}/INDEX.md
 ```
 
 ## 增量更新支持
 
 支持增量更新：
 - 对比已有索引文件的修改时间
-- 只处理新增的或更新的 {source_dir} 文件
+- 只处理新增的或更新的 {summary_dir} 文件
 - 保留手动编辑的额外信息（如果不冲突）

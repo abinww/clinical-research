@@ -17,8 +17,8 @@
 | --- | --- |
 | `clinical-extractor/` | 从 URL 或 PDF 提取临床资料，并生成结构化摘要。 |
 | `batch-extractor/` | 批量处理 raw 目录下尚未整理的临床资料。 |
-| `clinical-indexer/` | 根据 source 摘要生成或更新药品、适应症索引。 |
-| `clinical-wiki/` | 将未归档的 source 摘要整理到 drug 和 indication 维度。 |
+| `clinical-indexer/` | 根据 summary 摘要生成或更新药品、适应症索引。 |
+| `clinical-wiki/` | 将未归档的 summary 摘要整理到 drug 和 indication 维度。 |
 | `clinical-drug-summarizer/` | 汇总某个药品的全部临床数据，生成药品页。 |
 | `drug-trials-search/` | 查询临床试验注册信息，并写入药品管线表。 |
 | `clinical-trial-evaluator/` | 按结构化框架评价临床试验数据。 |
@@ -37,6 +37,8 @@
 ```bash
 git clone https://github.com/abinww/clinical-research.git
 ```
+
+如果希望让 agent 自动安装，可以让 agent 读取仓库根目录下的 `install.md`。安装完成后，再让 agent 按 `initial.md` 完成首次初始化。
 
 ## 使用示例
 
@@ -69,16 +71,16 @@ git clone https://github.com/abinww/clinical-research.git
 默认临床数据目录为：
 
 ```text
-/mnt/ur/notes/资料/clinical/
+~/clinical
 ```
 
 目录结构通常为：
 
 ```text
-/mnt/ur/notes/资料/clinical/
+~/clinical/
 ├── raw/          # 原始资料
-├── source/       # 结构化摘要
-├── drug/         # 药品索引
+├── summary/      # 结构化摘要（按药品分子目录组织：summary/{药品名}/）
+├── drug/         # 药品索引（平铺：{药品名}.md）
 ├── indication/   # 适应症索引
 ├── trials/       # 临床试验查询结果
 └── attachments/  # 图片附件
@@ -90,7 +92,7 @@ git clone https://github.com/abinww/clinical-research.git
 config.yaml
 ```
 
-如果你的本地数据目录不同，请修改 `config.yaml` 中的路径。
+首次运行时如果尚未生成 `config.yaml`，skill 会按 `initial.md` 询问数据目录并生成配置。默认数据目录是 `~/clinical`。
 
 ## 注意事项
 

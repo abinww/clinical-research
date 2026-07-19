@@ -22,7 +22,9 @@
 
 ## Configuration
 
-**命名格式**: `{药品名称}@{适应症}.md`
+**命名格式**: `summary/` 目录按药品分子目录组织，每个药品一个子目录 `summary/{药品名称}/`，子目录下的摘要文件必须命名为 `{药品名称}@{适应症}.md`。
+
+`summary/` 文件名不得使用网页标题、raw 文件名或任意摘要标题。网页/PDF 标题只用于 `raw/` 文件命名。
 
 **药品名称优先级规则**（用于文件名）：
 按以下优先级选择药品名称，优先使用简洁、易读的名称：
@@ -76,7 +78,7 @@
 3. **临床数据图片**，“Step 1”里面，判断重要的图片，可以将链接插入这里；
 4. **试验设计**，以表格形式展示，如果有基线人群数据，也可以放在这一部分；
 5. **专家点评**，仅供参考，从药学/医学专家角度分析该临床数据的意义；
-6. **数据一致性审核**，放在文档末尾，用于记录 source 数据与 raw 原文的逐项核对结果；
+6. **数据一致性审核**，放在文档末尾，用于记录 summary 数据与 raw 原文的逐项核对结果；
 
 #### YAML
 分析文档，并提取如下内容。如果无法获取，那么就留空:
@@ -91,7 +93,9 @@
 | trial_name | 字符串 | 试验名称 |
 | conference | 字符串 | 学术会议或发布场合 |
 | created | 日期 | 数据来源日期 |
-| source_raw | 字符串 | 关联的 raw/ 文件路径（必填） |
+| source_raw | 字符串 | 关联的本次 raw/ 文件路径（必填，字段名保留不变，指向 raw/ 目录） |
+
+`source_raw` 必须指向本次生成并用于摘要的数据源 raw 文件；不得指向其他来源、目录或合并文件。
 
 #### 有效性和安全性数据
 For effectiveness and safety data, present findings in **markdown table format**:
@@ -141,7 +145,7 @@ For effectiveness and safety data, present findings in **markdown table format**
 
 #### 数据一致性审核
 
-本章节用于记录 data verifier subagent 对 source 摘要与 raw 原文的核对结果，必须放在整个 source 文件末尾。
+本章节用于记录 data verifier subagent 对 summary 摘要与 raw 原文的核对结果，必须放在整个 summary 文件末尾。
 
 只检查临床数据和试验事实是否能在 `raw/` 中找到依据，不评价临床价值，不补充新数据。
 
@@ -162,18 +166,19 @@ For effectiveness and safety data, present findings in **markdown table format**
 ```markdown
 ## 数据一致性审核
 
-| 数据项 | source中的值 | raw证据 | 状态 | 问题 |
+| 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
 |------|-------------|---------|------|------|
 | ORR | 42.3% | "...ORR was 42.3%..." | PASS | - |
 | mPFS | 11.3 | 未找到 | FAIL | raw中未出现该数值 |
-| G≥3 TRAE | 25.0% | "...grade 3 or higher TEAEs..." | WARN | raw为TEAE，source写TRAE |
+| G≥3 TRAE | 25.0% | "...grade 3 or higher TEAEs..." | WARN | raw为TEAE，summary写TRAE |
 ```
 
 注意：
-- `source` 中的每一个临床数值都必须有对应审核行
+- `summary` 中的每一个临床数值都必须有对应审核行
+- `summary` 中每一个临床数值、试验事实和关键分组信息都必须能追溯到 `source_raw` 指向的 raw 文件
 - cohort、剂量、治疗组、对照组不能串列
 - `TEAE`、`TRAE`、`AE`、`SAE` 不得混用；如原文术语不同，标记 `WARN` 或 `FAIL`
-- 时间单位不得擅自转换；如原文为 weeks，source 写成 months，标记 `FAIL`
+- 时间单位不得擅自转换；如原文为 weeks，summary 写成 months，标记 `FAIL`
 - 原文没有的数据不得写成确定数据
 - 本章节仅用于溯源审核，不得作为 drug/ 或 indication/ 索引的数据来源
 
@@ -227,9 +232,9 @@ source_raw: [[raw/{原始文件名.md}]]
 
 ## 数据一致性审核
 
-| 数据项 | source中的值 | raw证据 | 状态 | 问题 |
+| 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
 |------|-------------|---------|------|------|
-| {数据项} | {source中的值} | {raw原文证据或未找到} | {PASS/WARN/FAIL} | {问题说明} |
+| {数据项} | {summary中的值} | {raw原文证据或未找到} | {PASS/WARN/FAIL} | {问题说明} |
 
 ```
 
@@ -247,7 +252,7 @@ source_raw: [[raw/{原始文件名.md}]]
 
 如果内容涉及多个药品或适应症：
 - 询问用户需要提取哪一个
-- 或生成多个 source 文件
+- 或生成多个 summary 文件
 
 ### 数据表格缺失
 
