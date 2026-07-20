@@ -93,10 +93,6 @@
 | trial_name | 字符串 | 试验名称 |
 | conference | 字符串 | 学术会议或发布场合 |
 | created | 日期 | 数据来源日期 |
-| source_raw | 字符串 | 关联的本次 raw/ 文件路径（必填，字段名保留不变，指向 raw/ 目录） |
-
-`source_raw` 必须指向本次生成并用于摘要的数据源 raw 文件；不得指向其他来源、目录或合并文件。
-
 #### 有效性和安全性数据
 For effectiveness and safety data, present findings in **markdown table format**:
 
@@ -175,7 +171,7 @@ For effectiveness and safety data, present findings in **markdown table format**
 
 注意：
 - `summary` 中的每一个临床数值都必须有对应审核行
-- `summary` 中每一个临床数值、试验事实和关键分组信息都必须能追溯到 `source_raw` 指向的 raw 文件
+- `summary` 中每一个临床数值、试验事实和关键分组信息都必须能追溯到 `> 来源原文:` 行指向的 raw 文件
 - cohort、剂量、治疗组、对照组不能串列
 - `TEAE`、`TRAE`、`AE`、`SAE` 不得混用；如原文术语不同，标记 `WARN` 或 `FAIL`
 - 时间单位不得擅自转换；如原文为 weeks，summary 写成 months，标记 `FAIL`
@@ -196,10 +192,11 @@ phase: {Phase}
 trial_name: {试验名称}
 conference: {学术会议}
 created: {YYYY-MM-DD}
-source_raw: [[raw/{原始文件名.md}]]
 ---
 
 # {药品名}@{适应症}
+
+> 来源原文: [[raw/{原始文件名.md}]]
 
 ## 核心数据
 

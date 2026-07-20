@@ -26,14 +26,19 @@ echo "  raw_dir: $RAW_DIR"
 echo "  summary_dir: $SUMMARY_DIR"
 echo ""
 
-# 收集已处理的 raw 文件（从 summary/{药品}/ 各子目录的 YAML 中提取 source_raw）
+# 收集已处理的 raw 文件（从 summary/{药品}/ 各子目录的 body "> 来源原文:" 行提取）
 # 注意：摘要按药品分子目录组织，文件位于 summary/{药品名}/{药品名}@{适应症}.md
 declare -A PROCESSED
 
 # 递归遍历 summary_dir 下所有 .md 文件（跳过顶层可能存在的 INDEX.md 等清单文件）
 while IFS= read -r -d '' summary_file; do
-    # 提取 YAML frontmatter 中的 source_raw
-    source_raw=$(sed -n '/^---$/,/^---$/p' "$summary_file" | grep "^source_raw:" | sed 's/source_raw: *//' | tr -d '"' | xargs)
+    # 优先从 body "> 来源原文: [[raw/xxx.md]]" 行提取
+    source_raw=$(grep -m1 "^> 来源原文:" "$summary_file" | sed 's/.*\[\[\(raw\/[^]]*\)\]\].*/\1/')
+
+    # 兜底兼容：旧格式 YAML frontmatter 中的 source_raw 字段
+    if [ -z "$source_raw" ]; then
+        source_raw=$(sed -n '/^---$/,/^---$/p' "$summary_file" | grep "^source_raw:" | sed 's/source_raw: *//' | tr -d '"' | xargs)
+    fi
 
     if [ -n "$source_raw" ]; then
         PROCESSED["$source_raw"]=1

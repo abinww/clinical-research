@@ -113,7 +113,9 @@ unorganized = existing_summaries - organized_summaries
 - `trial_name`: 试验名称
 - `conference`: 会议名称
 - `created`: 数据日期
-- `source_raw`: 原始文件路径（指向 raw/ 目录，字段名保留不变）
+
+**提取 body 来源原文行**：
+- 从正文 H1 之后的 `> 来源原文: [[raw/{文件名}.md]]` 行提取关联的原始文件路径
 
 **提取核心数据表格**：
 - 读取文件中的有效性和安全性数据表格

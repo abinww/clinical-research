@@ -74,9 +74,9 @@ write path={summary_dir}/{药品名}/{文件名}.md content={摘要内容}
 
 ## 边缘情况处理
 
-### {summary_dir} 文件无 source_raw 字段
+### {summary_dir} 文件无 "> 来源原文:" 行
 
-如果 {summary_dir} 文件的 YAML 中没有 `source_raw` 字段（字段名保留，指向 raw/ 目录）：
+如果 {summary_dir} 文件的正文中没有 `> 来源原文: [[raw/...]]` wikilink 行：
 - 跳过该文件，不纳入已处理列表
 - 该文件被视为独立生成的摘要，不参与去重判断
 
