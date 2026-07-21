@@ -188,14 +188,15 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 > 更新时间: YYYY-MM-DD
 
-| 试验ID | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
-|--------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
-| [NCT00000001](https://clinicaltrials.gov/study/NCT00000001) | Example Cancer | Phase II | Recruiting | 120 | 2023-06 | 2025-12 | — | BigPharma | ORR, DOR | PFS, OS, Safety | 2025-06 |
-| [NCT00000002](https://clinicaltrials.gov/study/NCT00000002) | Example Cancer 1L | Phase III | Completed | 600 | 2022-01 | 2024-06 | Standard Therapy | GlobalPharma | OS | PFS, ORR | 2024-12 |
+| 试验ID | 药品 | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
+|--------|------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
+| [NCT00000001](https://clinicaltrials.gov/study/NCT00000001) | ABC123 + Pembrolizumab + 化疗 | Example Cancer 1L | Phase II | Recruiting | 120 | 2023-06 | 2025-12 | — | BigPharma | ORR, DOR | PFS, OS, Safety | 2025-06 |
+| [NCT00000002](https://clinicaltrials.gov/study/NCT00000002) | ABC123 + 化疗 | Example Cancer 1L | Phase III | Completed | 600 | 2022-01 | 2024-06 | Standard Therapy | GlobalPharma | OS | PFS, ORR | 2024-12 |
 ```
 
 **说明**：
 - `试验ID` 以 Markdown 链接形式嵌入，点击直接打开 clinicaltrials.gov 页面：`[NCT编号](https://clinicaltrials.gov/study/NCT编号)`
+- `药品` 列写试验中实际使用的所有药物名称/代码；联合用药以 ` + ` 连接各组成部分（如 `ABC123 + Pembrolizumab + 化疗`）；单药填单名
 - 管线范围内含该药品所有适应症的试验，全部放在同一个表格中
 - 按阶段排序（Phase III → II → I），同阶段按开始日期倒序
 
@@ -209,13 +210,14 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 > 更新时间: YYYY-MM-DD
 
-| 试验ID | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
-|--------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
+| 试验ID | 药品 | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
+|--------|------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
 | — | — | — | — | — | — | — | — | — | — | — | — |
 ```
 
 **说明**：
 - `试验ID` 以 Markdown 链接形式嵌入中国临床试验注册中心详情页
+- `药品` 列填法与 4.1 节一致（联合用药以 ` + ` 连接）
 - 表格格式与 clinicaltrials.gov 一致
 - CDT 数据暂缺时可留空行占位
 
@@ -284,10 +286,10 @@ updated: 2025-05-31
 
 > 更新时间: 2025-06-15
 
-| 试验ID | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
-|--------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
-| [NCT00000003](https://clinicaltrials.gov/study/NCT00000003) | Example Cancer 1L | Phase III | Active | 398 | 2022-06 | 2027-12 | Standard Therapy | BigPharma | PFS, OS | ORR, DCR, Safety | 2025-06 |
-| [NCT00000004](https://clinicaltrials.gov/study/NCT00000004) | Example Cancer 2L | Phase II | Recruiting | 120 | 2024-03 | 2026-06 | — | BigPharma | ORR | PFS, OS | 2025-05 |
+| 试验ID | 药品 | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
+|--------|------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
+| [NCT00000003](https://clinicaltrials.gov/study/NCT00000003) | ABC123 + Pembrolizumab | Example Cancer 1L | Phase III | Active | 398 | 2022-06 | 2027-12 | Standard Therapy | BigPharma | PFS, OS | ORR, DCR, Safety | 2025-06 |
+| [NCT00000004](https://clinicaltrials.gov/study/NCT00000004) | ABC123 | Example Cancer 2L | Phase II | Recruiting | 120 | 2024-03 | 2026-06 | — | BigPharma | ORR | PFS, OS | 2025-05 |
 
 ### chinadrugtrials.org.cn
 
@@ -296,8 +298,8 @@ updated: 2025-05-31
 
 > 更新时间: —
 
-| 试验ID | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
-|--------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
+| 试验ID | 药品 | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
+|--------|------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
 | — | — | — | — | — | — | — | — | — | — | — | — |
 ```
 
@@ -317,6 +319,7 @@ updated: 2025-05-31
 - [ ] 组别列包含所有剂量组和对照组
 - [ ] 当前临床管线 包含 clinicaltrials.gov 和 chinadrugtrials.org.cn 子表
 - [ ] 管线试验ID 以 Markdown 链接形式嵌入，可直接点击打开
+- [ ] 管线 药品 列写试验中实际使用的所有药物名称/代码；联合用药以 ` + ` 连接
 - [ ] 关键里程碑 按时间排序
 - [ ] 链接路径正确（相对路径）
 - [ ] 无数据用 `—`，不留空白单元格
