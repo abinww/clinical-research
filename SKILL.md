@@ -1,7 +1,7 @@
 ---
 name: clinical-research
 description: |
-  用户提到"提取临床数据"/提供URL或PDF要求提取数据，或提到"扫描/批处理"/"更新/同步/整理临床数据索引"/"汇总药品临床数据"/"查询临床试验"/"评价临床试验" → 触发本skill。本skill用于创新药临床数据的研究，并整理为可追溯的临床数据知识库，完整路由表见正文。
+  用户提到"提取临床数据"/提供URL或PDF要求提取数据，或提到"扫描/批处理"/"更新/同步/整理临床数据索引"/"查询临床试验"/"评价临床试验" → 触发本skill。本skill用于创新药临床数据的研究，并整理为可追溯的临床数据知识库，完整路由表见正文。
 ---
 
 # Clinical Research
@@ -62,12 +62,11 @@ PREFLIGHT:
 | "提取临床数据"、包含 URL | clinical-extractor | 完整流程: URL → raw/ → summary/ |
 | 包含 PDF | clinical-extractor | 提取 PDF 并生成摘要 |
 | "扫描/批处理临床数据" | batch-extractor | 批量: raw/ → summary/ |
-| "更新/同步/扫描/重建索引" | clinical-indexer | summary/ → drug/, indication/ |
-| "整理临床数据" / "归档临床数据" / "整理数据" | clinical-wiki | 扫描未整理的summary → 按药品/适应症归档 |
-| "扫描未整理的临床数据" / "同步临床数据到索引" | clinical-wiki | 增量整理未归档的数据 |
-| "更新药品索引" / "更新适应症索引" | clinical-wiki | 按 drug/indication 维度更新索引 |
-| **"汇总药品临床数据" / "生成药品索引" / "整理{药品名}的所有数据"** | **clinical-drug-summarizer** | **扫描 summary/{药品名}/ 下该药品的所有数据 → 生成 drug/{药品名}.md** |
-| "查询药品临床试验" / "搜索临床试验" | drug-trials-search | Python脚本查询 CTG + CDT |
+| "更新/同步/扫描索引" | clinical-indexer | 增量扫描全部 summary，分别补齐 drug/ 与 indication/ |
+| "整理临床数据" / "归档临床数据" / "整理数据" | clinical-indexer | 增量模式：扫描未整理的 summary → 更新 drug/indication |
+| "扫描未整理的临床数据" / "同步临床数据到索引" | clinical-indexer | 增量模式：处理未归档 summary |
+| "更新药品索引" / "更新适应症索引" | clinical-indexer | 增量扫描 summary，分别补齐 drug/ 与 indication/ |
+| "查询药品临床试验" / "搜索临床试验" | drug-trials-search | Python脚本查询 CTG |
 | 药品名称 + "临床试验" | drug-trials-search | 生成表格，列出所有结果 |
 | "评价临床数据" / "评估临床试验" / "怎么看这个数据" | clinical-trial-evaluator | 提供系统化的试验数据评价框架 |
 | 无明确指令 | clinical-indexer | 批量扫描并更新所有索引 |

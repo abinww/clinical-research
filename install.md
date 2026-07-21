@@ -115,8 +115,6 @@ git -C {skill_root}/clinical-research pull
 {skill_root}/clinical-research/clinical-extractor/
 {skill_root}/clinical-research/batch-extractor/
 {skill_root}/clinical-research/clinical-indexer/
-{skill_root}/clinical-research/clinical-wiki/
-{skill_root}/clinical-research/clinical-drug-summarizer/
 {skill_root}/clinical-research/drug-trials-search/
 {skill_root}/clinical-research/clinical-trial-evaluator/
 ```

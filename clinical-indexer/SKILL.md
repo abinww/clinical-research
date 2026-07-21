@@ -1,184 +1,202 @@
 ---
 name: clinical-data-indexer
-description: |
-  索引更新执行步骤（供clinical-research主skill调用）
-  
+  临床索引增量归档执行步骤（供clinical-research主skill调用）
+
   当主skill路由到本文件时，按以下步骤执行：
 ---
 
-# 索引更新 - 执行步骤
+# 临床索引增量归档
 
-> 本文件由 clinical-research/SKILL.md 路由后读取执行
-> 所有工具调用在当前session完成
+> 本文件由 clinical-research/SKILL.md 路由后读取执行。
+> 本 workflow 面向手动或 cron 定时运行，只按来源链接存在性查漏补缺。
 
-## Configuration
+## 调用接口
 
-读取 `../config.yaml` 获取数据目录路径：
-- `summary_dir`: 规范摘要目录（按药品分子目录组织：`summary/{药品名}/`）
-- `drug_dir`: 药品索引保存目录
-- `indication_dir`: 适应症索引保存目录
+本 skill 支持两种调用方式，执行同一套增量归档 workflow。
 
-## Step 1: 扫描 {summary_dir} 目录
+### 用户请求调用
 
-递归列出所有 `.md` 文件（每个药品子目录下的全部 summary 文件）：
+由 `clinical-research/SKILL.md` 根据用户请求路由到本文件。适用请求包括：
+
+- 归档临床数据
+- 整理临床数据
+- 扫描未整理的临床数据
+- 同步临床数据到索引
+- 更新药品索引
+- 更新适应症索引
+
+通过根 skill 调用时，根 skill 负责初始化检查、读取配置和输出 `PREFLIGHT`；本文件从 Step 1 开始执行增量归档。
+
+### Cron 直接调用
+
+Cron 可以直接读取并执行本文件，不需要重新读取或经过根 `clinical-research/SKILL.md` 路由。
+
+Cron 直接调用时必须：
+
+- 从本文件 Step 1 开始执行
+- 自行读取 `../config.yaml`
+- 自行读取 `../schema/drug-spec.md` 和 `../schema/indication-spec.md`
+- 执行完整的 drug/ 与 indication/ 双维度增量归档
+- 不等待用户确认
+- 记录失败项并继续处理其他可处理项目
+- 最后返回完整归档统计
+
+Cron 调用提示词应明确要求直接执行本文件，不要只发送“更新索引”等模糊指令。
+
+两种调用都遵守相同的幂等规则：已有 `> 来源: [[summary/...]]` 链接的 summary 跳过，没有链接的才归档。
+
+## 定位与约束
+
+- 每次扫描全部 `summary/`，分别检查 summary 是否已归档到 `drug/` 和 `indication/`。
+- `drug/` 和 `indication/` 两个归档维度独立计算、独立更新。
+- 只处理目标维度缺失来源链接的 summary；已归档内容不重复追加。
+- 不比较 summary 修改时间、内容 hash 或索引更新时间。
+- 不修改 `summary/` 原始摘要。
+- 不执行单药模式、全量重建或破坏性删除。
+- 不默认生成或更新 `summary/INDEX.md`。
+- 所有输出格式必须遵守 `../schema/drug-spec.md` 和 `../schema/indication-spec.md`；本 workflow 不重复定义 Markdown 格式。
+
+如果一个维度写入失败，记录失败并继续处理其他药品和另一个维度；最终报告必须列出失败项。
+
+## Step 1: 读取配置和格式规范
+
+读取 `../config.yaml`，获取：
+
+- `summary_dir`
+- `drug_dir`
+- `indication_dir`
+
+读取：
+
+- `../schema/drug-spec.md`
+- `../schema/indication-spec.md`
+
+如果任一文件或目录配置无法读取，停止执行并报告原因。
+
+## Step 2: 扫描全部 summary
+
+扫描各药品子目录下的摘要文件：
 
 ```bash
 find ${summary_dir} -mindepth 2 -name "*.md" -type f
 ```
 
-mindepth 2 跳过 summary_dir 顶层可能存在的清单文件（如 INDEX.md），只采集各药品子目录下的摘要。
+跳过 `summary_dir/INDEX.md` 等顶层文件。每个 summary 的唯一标识是相对于数据根目录的路径：
 
-## Step 2: 解析 frontmatter
-
-对每个文件提取 YAML 字段：
-- `drug`: 药品通用名
-- `drug_aliases`: 别名列表
-- `indication`: 适应症名称
-- `companies`: 公司列表
-- `phase`: 临床阶段
-- `conference`: 会议名称
-- `trial_name`: 试验名称
-- `created`: 数据日期
-- `status`: 数据状态（空=正常，orphaned=来源丢失）
-
-此外，从 body 中 H1 后的 `> 来源原文: [[raw/{文件名}.md]]` 行提取关联的 raw 文件路径。
-
-## Step 3: 构建结构化数据
-
-按两个维度分组：
-
-**按药品分组**:
-```
-drugs = {
-  "药品A": [summary1, summary2, ...],
-  "药品B": [summary3, ...]
-}
+```text
+summary/{药品名}/{文件名}.md
 ```
 
-**按适应症分组**:
-```
-indications = {
-  "适应症X": [summary1, summary3, ...],
-  "适应症Y": [summary2, ...]
-}
-```
+对每个 summary 读取：
 
-## Step 4: 生成药品索引
+- YAML：`drug`、`drug_aliases`、`indication`、`companies`、`phase`、`trial_name`、`conference`、`created`
+- 正文：`> 来源原文: [[raw/...]]` 行
+- 临床有效性和安全性数据表
 
-为每个药品生成 {drug_dir}/{药品名}.md:
+缺少 `drug` 或 `indication` 的 summary 记录警告，不纳入对应维度的本轮更新；不要修改该 summary。
 
-```markdown
----
-drug: 药品通用名
-aliases: [别名1, 别名2]
-category: 药物类别
-target: 作用靶点
-companies: [公司A, 公司B]
----
+## Step 3: 计算 drug 归档缺口
 
-# 药品名
+扫描 `drug_dir` 根目录下所有药品索引文件，提取所有来源链接：
 
-## 基本信息
-
-| 属性 | 内容 |
-|------|------|
-| 通用名 | ... |
-| 靶点 | ... |
-| 药物类别 | ... |
-| 研发公司 | ... |
-
-## 临床数据汇总
-
-### 适应症A
-
-| 试验 | 阶段 | 关键数据 | 来源 |
-|------|------|----------|------|
-| [试验名](#) | Phase III | ORR 41.4%, mPFS 11.3mo | [摘要](../summary/药品A/药品A@适应症A.md) |
-
-### 适应症B
-
-...
-
-## 数据时间线
-
-- YYYY-MM: 适应症A Phase III 数据发布
-- YYYY-MM: 适应症B Phase II 数据发布
+```text
+> 来源: [[summary/{药品}/{文件}.md]]
 ```
 
-来源链接必须使用 vault 绝对 wikilink 路径 `[[summary/{药品名}/{文件名}.md]]`，或与 drug-spec.md 一致的相对 markdown 链接 `../summary/{药品名}/{文件名}.md`。
+将目标路径规范化并去重，得到：
 
-## Step 5: 生成适应症索引
-
-为每个适应症生成 {indication_dir}/{适应症名}.md:
-
-```markdown
----
-indication: 适应症名称
-category: 适应症类别
-aliases: [别名1, 别名2]
----
-
-# 适应症名称
-
-## 概述
-
-...
-
-## 在研药品
-
-| 药品 | 公司 | 阶段 | 关键数据 | 最新进展 |
-|------|------|------|----------|----------|
-| [药品A](../drug/药品A.md) | 公司A | Phase III | ORR 41.4% | 2024-05 ASCO |
-| [药品B](../drug/药品B.md) | 公司B | Phase II | mPFS 8.5mo | 2024-03 |
-
-## 标准治疗
-
-...
-
-## 数据时间线
-
-- YYYY-MM: 药品A 获批
-- YYYY-MM: 药品B Phase III 失败
+```text
+organized_for_drug
 ```
 
-适应症索引中 `[药品](../drug/药品.md)` 链接保持相对路径不变（指向 drug/ 平铺索引）。
+计算：
 
-## Step 6: 生成汇总清单
-
-在 `summary_dir` 顶层生成 `INDEX.md` 药品/适应症清单（不要写到任何药品子目录下）：
-
-**INDEX.md** 包含两个章节：
-
-```markdown
-# 药品索引
-
-| 药品 | 适应症数 | 最新数据 |
-|------|---------|---------|
-| [药品A](../drug/药品A.md) | 3 | 2024-05 |
-
-# 适应症索引
-
-| 适应症 | 药品数 | 最新数据 |
-|--------|-------|---------|
-| [适应症X](../indication/适应症X.md) | 5 | 2024-05 |
+```text
+missing_from_drug = all_summaries - organized_for_drug
 ```
 
-清单路径：`{summary_dir}/INDEX.md`。
+只要 summary 路径已经出现在任一 `drug/*.md` 的 `> 来源:` 行中，就视为 drug 维度已归档。
 
-## Output
+## Step 4: 计算 indication 归档缺口
 
-报告：
-```
-索引更新完成:
-- 扫描 {summary_dir}: N 个文件
-- 药品索引: 生成 M 个药品页
-- 适应症索引: 生成 K 个适应症页
-- 汇总清单: {summary_dir}/INDEX.md
+扫描 `indication_dir` 根目录下所有适应症索引文件，提取所有来源链接：
+
+```text
+> 来源: [[summary/{药品}/{文件}.md]]
 ```
 
-## 增量更新支持
+将目标路径规范化并去重，得到：
 
-支持增量更新：
-- 对比已有索引文件的修改时间
-- 只处理新增的或更新的 {summary_dir} 文件
-- 保留手动编辑的额外信息（如果不冲突）
+```text
+organized_for_indication
+```
+
+计算：
+
+```text
+missing_from_indication = all_summaries - organized_for_indication
+```
+
+只要 summary 路径已经出现在任一 `indication/*.md` 的 `> 来源:` 行中，就视为 indication 维度已归档。
+
+## Step 5: 更新 drug 索引
+
+如果 `missing_from_drug` 为空：
+
+- 不读取或修改任何 drug 索引文件。
+
+否则：
+
+1. 按 summary 的 `drug` 字段分组。
+2. 按 `drug-spec.md` 的药品名称优先级确定 `drug/{药品名}.md`。
+3. 文件不存在时，按 `drug-spec.md` 创建完整药品索引。
+4. 文件存在时，只追加本轮缺失 summary 对应的适应症、临床数据、关键里程碑和来源链接。
+5. 保留已有内容和人工补充。
+6. 写入前再次确认来源链接未存在，确保重复运行不会重复追加。
+7. 某个药品写入失败时记录错误，继续处理其他药品。
+
+单个 summary 已归档到 drug/，但仍未归档到 indication/ 时，不因 drug 已归档而跳过 indication 维度。
+
+## Step 6: 更新 indication 索引
+
+如果 `missing_from_indication` 为空：
+
+- 不读取或修改任何 indication 索引文件。
+
+否则：
+
+1. 按 summary 的 `indication` 字段分组。
+2. 按 `indication-spec.md` 的命名规则确定 `indication/{适应症名}.md`。
+3. 文件不存在时，按 `indication-spec.md` 创建完整适应症索引。
+4. 文件存在时，只追加本轮缺失 summary 对应的药品数据和来源链接。
+5. 保留已有内容和人工补充。
+6. 写入前再次确认来源链接未存在，确保重复运行不会重复追加。
+7. 某个适应症写入失败时记录错误，继续处理其他适应症。
+
+## Step 7: 输出报告
+
+输出：
+
+```text
+clinical-indexer 增量归档完成：
+
+扫描 summary: N 个
+
+drug 归档：
+- 已归档: A 个
+- 待归档: B 个
+- 新建药品页: C 个
+- 更新药品页: D 个
+- 失败: E 个
+
+indication 归档：
+- 已归档: F 个
+- 待归档: G 个
+- 新建适应症页: H 个
+- 更新适应症页: I 个
+- 失败: J 个
+
+无变化: yes / no
+```
+
+当两个缺口都为空时，必须报告 `无变化: yes`，且不得写入任何 drug/indication 文件。

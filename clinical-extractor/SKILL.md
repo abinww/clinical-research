@@ -118,7 +118,7 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 - 若重新提取后 summary 文件名与旧文件相同，Step 5 中的"文件已存在 → 更新"分支会自然覆盖旧链接
 - 若文件名发生变化（如页面标题变了导致 raw 文件名变化），drug 索引中旧的 `> 来源:` 行会指向已删除的 summary 文件，成为断链
-- 断链不在本步骤处理；后续可由 `clinical-wiki` 或 `clinical-indexer` 清理，或用户人工处理
+- 断链不在本步骤处理；后续可由 `clinical-indexer` 清理，或用户人工处理
 
 ## Step 3: 生成并写入 raw/
 

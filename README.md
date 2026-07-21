@@ -19,9 +19,7 @@
 | --- | --- |
 | `clinical-extractor/` | 从 URL 或 PDF 提取临床资料，并生成结构化摘要。 |
 | `batch-extractor/` | 批量处理 raw 目录下尚未整理的临床资料。 |
-| `clinical-indexer/` | 根据 summary 摘要生成或更新药品、适应症索引。 |
-| `clinical-wiki/` | 将未归档的 summary 摘要整理到 drug 和 indication 维度。 |
-| `clinical-drug-summarizer/` | 汇总某个药品的全部临床数据，生成药品页。 |
+| `clinical-indexer/` | 定时或手动扫描全部 summary，分别查漏补缺 drug/ 和 indication/ 索引。 |
 | `drug-trials-search/` | 查询临床试验注册信息，并写入药品管线表。 |
 | `clinical-trial-evaluator/` | 按结构化框架评价临床试验数据。 |
 | `schema/` | 临床摘要、药品索引、适应症索引的 Markdown 格式规范。 |
@@ -106,8 +104,8 @@ git clone https://github.com/abinww/clinical-research.git
 | --- | --- | --- |
 | `raw/` | 工具（tavily_extract / pdftotext 等）的原始输出，禁止大模型改写 | clinical-extractor、batch-extractor |
 | `summary/` | 结构化临床摘要，按药品分子目录组织，必须通过数据一致性审核 | clinical-extractor、batch-extractor |
-| `drug/` | 药品索引，按药品平铺，一药一文件 | clinical-indexer、clinical-wiki、clinical-drug-summarizer、drug-trials-search |
-| `indication/` | 适应症索引，按适应症平铺 | clinical-indexer、clinical-wiki |
+| `drug/` | 药品索引，按药品平铺，一药一文件 | clinical-extractor、clinical-indexer、drug-trials-search |
+| `indication/` | 适应症索引，按适应症平铺 | clinical-indexer |
 | `trials/` | 临床试验注册查询的原始结果 | drug-trials-search |
 | `attachments/` | 图片附件 | clinical-extractor（多模态提取） |
 
