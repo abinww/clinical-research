@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-药品临床试验查询脚本
-同时查询 clinicaltrials.gov 和 chinadrugtrials.org.cn
-"""
+"""药品临床试验查询脚本（当前支持 clinicaltrials.gov）。"""
 
 import argparse
 import json
@@ -34,6 +31,7 @@ class TrialResult:
         self.trial_id: str = "N/A"
         self.drug_name: str = "N/A"
         self.indication: str = "N/A"
+        self.countries: str = "—"
         self.sponsor: str = "N/A"
         self.last_update: str = "N/A"
         self.status: str = "N/A"
@@ -51,6 +49,7 @@ class TrialResult:
         return {
             "临床ID": self.trial_id,
             "药品名称": self.drug_name,
+            "开展国家": self.countries,
             "适应症": self.indication,
             "Sponsor": self.sponsor,
             "最近更新": self.last_update,
@@ -65,6 +64,16 @@ class TrialResult:
             "链接": self.url,
             "来源": self.source
         }
+
+
+def extract_countries(locations: list[dict]) -> str:
+    """Extract stable, de-duplicated country names from CTG locations."""
+    countries = []
+    for location in locations or []:
+        country = str(location.get("country", "")).strip()
+        if country and country not in countries:
+            countries.append(country)
+    return "、".join(countries) if countries else "—"
 
 
 class ClinicalTrialsGov:
@@ -175,6 +184,9 @@ class ClinicalTrialsGov:
             conditions_mod = protocol.get("conditionsModule", {})
             conditions = conditions_mod.get("conditions", [])
             trial.indication = ", ".join(conditions[:3]) if conditions else "N/A"
+
+            locations_mod = protocol.get("contactsLocationsModule", {})
+            trial.countries = extract_countries(locations_mod.get("locations", []))
             
             # Arms/Interventions（药品名称、对照药物）
             arms_mod = protocol.get("armsInterventionsModule", {})            
@@ -215,7 +227,7 @@ class ClinicalTrialsGov:
                     if name and name not in drug_names and len(drug_names) < 3:
                         drug_names.append(name)
             if drug_names:
-                return ", ".join(drug_names)
+                return " + ".join(drug_names)
         
         # 后备：从标题提取
         return title[:50] if title else "N/A"
@@ -370,42 +382,55 @@ class ChinaDrugTrials:
 
 
 def generate_markdown_table(trials: list[TrialResult]) -> str:
-    """生成 Markdown 表格"""
+    """Generate a clinicaltrials.gov table matching schema/drug-spec.md."""
     if not trials:
         return "未找到符合条件的临床试验。\n"
     
-    # 表头
-    headers = ["临床ID", "药品名称", "适应症", "Sponsor", "当前状态", "临床阶段", 
-               "计划入组", "开始日期", "完成日期", "对照药物", 
-               "Primary Outcome", "Secondary Outcome", "链接", "来源"]
+    headers = ["试验ID", "药品", "开展国家", "适应症", "阶段", "状态", "入组",
+               "开始", "预计完成", "对照", "Sponsor", "主要终点", "次要终点", "更新"]
     
     lines = ["| " + " | ".join(headers) + " |"]
     lines.append("|" + "|".join(["---"] * len(headers)) + "|")
     
-    # 数据行
     for trial in trials:
         d = trial.to_dict()
         row = [
-            d["临床ID"],
-            d["药品名称"][:40],  # 截断过长的内容
-            d["适应症"][:30],
-            d["Sponsor"][:30],
-            d["当前状态"][:20],
-            d["临床阶段"],
+            f"[{d['临床ID']}]({d['链接']})",
+            d["药品名称"],
+            d["开展国家"],
+            d["适应症"],
+            normalize_phase(d["临床阶段"]),
+            d["当前状态"],
             d["计划入组"],
             d["开始日期"],
             d["完成日期"],
-            d["对照药物"][:20],
-            d["Primary Outcome"][:50],
-            d["Secondary Outcome"][:50],
-            f"[链接]({d['链接']})",
-            d["来源"]
+            d["对照药物"],
+            d["Sponsor"],
+            d["Primary Outcome"],
+            d["Secondary Outcome"],
+            d["最近更新"],
         ]
         # 转义表格中的特殊字符
         row = [cell.replace("|", "\\|").replace("\n", " ") for cell in row]
         lines.append("| " + " | ".join(row) + " |")
     
     return "\n".join(lines)
+
+
+def generate_pipeline_markdown(trials: list[TrialResult]) -> str:
+    """Generate the currently supported CTG pipeline subsection."""
+    updated = datetime.now().strftime("%Y-%m-%d")
+    return (
+        "### clinicaltrials.gov\n\n"
+        f"> 更新时间: {updated}\n\n"
+        f"{generate_markdown_table(trials)}"
+    )
+
+
+def normalize_phase(phase: str) -> str:
+    """Format CTG phase values for the drug pipeline schema."""
+    value = str(phase or "—").strip()
+    return re.sub(r"^PHASE\s*([1-4])$", lambda match: f"Phase {['I', 'II', 'III', 'IV'][int(match.group(1)) - 1]}", value, flags=re.IGNORECASE)
 
 
 def main():
@@ -415,8 +440,10 @@ def main():
     parser.add_argument("--sponsor", "-s", help="申办方")
     parser.add_argument("--max", "-m", type=int, default=100, help="最大结果数（默认100）")
     parser.add_argument("--output", "-o", help="输出文件路径（可选）")
-    parser.add_argument("--source", choices=["all", "ctg", "cdt"], default="all",
-                        help="数据源: all(全部), ctg(clinicaltrials.gov), cdt(chinadrugtrials)")
+    parser.add_argument("--source", choices=["ctg"], default="ctg",
+                        help="数据源: ctg(clinicaltrials.gov)")
+    parser.add_argument("--format", choices=["pipeline-markdown", "json"],
+                        default="pipeline-markdown", help="输出格式")
     
     args = parser.parse_args()
     
@@ -434,8 +461,8 @@ def main():
     all_trials = []
     
     # 查询 clinicaltrials.gov
-    if args.source in ["all", "ctg"]:
-        print("[1/2] 查询 clinicaltrials.gov...")
+    if args.source == "ctg":
+        print("[1/1] 查询 clinicaltrials.gov...")
         ctg = ClinicalTrialsGov()
         ctg_trials = ctg.search(
             drug=args.drug,
@@ -446,33 +473,22 @@ def main():
         print(f"      找到 {len(ctg_trials)} 条记录")
         all_trials.extend(ctg_trials)
     
-    # 查询 chinadrugtrials.org.cn
-    if args.source in ["all", "cdt"]:
-        print("[2/2] 查询 chinadrugtrials.org.cn...")
-        cdt = ChinaDrugTrials()
-        cdt_trials = cdt.search(
-            drug=args.drug,
-            indication=args.indication,
-            sponsor=args.sponsor,
-            max_results=args.max
-        )
-        print(f"      找到 {len(cdt_trials)} 条记录")
-        all_trials.extend(cdt_trials)
-    
     print(f"\n{'='*60}")
     print(f"总计: {len(all_trials)} 条临床试验记录")
     print(f"{'='*60}\n")
     
-    # 生成表格
-    table_md = generate_markdown_table(all_trials)
+    if args.format == "json":
+        print(json.dumps([trial.to_dict() for trial in all_trials], ensure_ascii=False, indent=2))
+        return 0
+
+    # 生成与 drug-spec.md 一致的管线表格
+    all_trials.sort(key=lambda trial: phase_sort_key(trial.phase, trial.start_date))
+    table_md = generate_pipeline_markdown(all_trials)
     
     # 统计信息
     ctg_count = sum(1 for t in all_trials if t.source == "CTG")
-    cdt_count = sum(1 for t in all_trials if t.source == "CDT")
-    
     stats = f"\n---\n"
     stats += f"clinicaltrials.gov: {ctg_count} 条记录\n"
-    stats += f"chinadrugtrials.org.cn: {cdt_count} 条记录\n"
     stats += f"总计: {len(all_trials)} 条记录\n"
     
     full_output = table_md + stats
@@ -488,6 +504,22 @@ def main():
         print(f"\n结果已保存到: {args.output}")
     
     return 0
+
+
+def phase_sort_key(phase: str, start_date: str = "") -> tuple[int, int, int]:
+    """Sort Phase III before Phase II/I and newer start dates first."""
+    normalized = normalize_phase(phase).lower()
+    rank = {"phase iii": 0, "phase ii": 1, "phase i": 2, "phase iv": 3}.get(normalized, 4)
+    year, month = normalize_date_for_sort(start_date)
+    return rank, -year, -month
+
+
+def normalize_date_for_sort(value: str) -> tuple[int, int]:
+    """Return year and month for descending date sorting."""
+    parts = str(value or "").split("-")
+    if len(parts) >= 2 and all(part.isdigit() for part in parts[:2]):
+        return int(parts[0]), int(parts[1])
+    return 0, 0
 
 
 if __name__ == "__main__":

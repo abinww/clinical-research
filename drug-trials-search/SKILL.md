@@ -14,7 +14,7 @@ description: |
 ## 执行约束
 
 - ✅ 必须使用 Python 脚本执行搜索和字段提取
-- ✅ 必须同时查询两个数据源
+- ✅ 当前版本只查询 clinicaltrials.gov；chinadrugtrials.org.cn 仅保留 schema 占位，暂不查询
 - ✅ 所有结果全部罗列，不去重
 - ✅ 输出为表格格式
 - ✅ 搜索完成后必须将结果写入 `drug/{药品名}.md` 的临床管线章节
@@ -24,7 +24,7 @@ description: |
 | 网站 | 范围 | 查询方式 |
 |-----|-----|---------|
 | clinicaltrials.gov | 全球 | Python 脚本 (API) |
-| chinadrugtrials.org.cn | 中国 | OpenClaw Browser Tool |
+| chinadrugtrials.org.cn | 中国 | 当前版本不查询，仅由 drug-spec.md 保留占位 |
 
 ## Step 1: 输入识别
 
@@ -33,94 +33,28 @@ description: |
 - **适应症**（可选）：如 "非小细胞肺癌"、"NSCLC"
 - **Sponsor**（可选）：如 "Merck"、"AstraZeneca"
 
-## Step 2: 查询 clinicaltrials.gov（自动）
+## Step 2: 执行 clinicaltrials.gov 查询
 
 调用 Python 脚本：
 ```bash
-python3 {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适应症>"] --source ctg
+python3 {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适应症>"] --source ctg --format pipeline-markdown
 ```
 
-脚本使用 clinicaltrials.gov 官方 API，返回 JSON 格式数据。
+脚本使用 clinicaltrials.gov 官方 API，负责字段提取、治疗方案整理、注册国家去重、排序和 schema 对齐的 Markdown 渲染。agent 不得从 API 原始数据自行提取、补全或改写临床字段。
 
-## Step 3: 查询 chinadrugtrials.org.cn（半自动）
+## Step 3: 处理脚本输出
 
-该网站使用**瑞数反爬机制**，无法用 requests 直接访问。
-需要使用 OpenClaw Browser Tool 绕过：
+- 原样读取 Python 输出的 `### clinicaltrials.gov` 管线子表。
+- 按 `../schema/drug-spec.md` 的“当前临床管线”格式向用户展示。
+- 不得新增“来源”或“链接”列；试验 URL 已嵌入试验 ID。
+- 不得自行重排表格、修改数字、补全缺失值或根据常识推断国家。
+- 脚本无法获得的字段统一保留为 `—` 或 API 返回的规范空值。
 
-### 3.1 启动浏览器
-```
-browser action=start
-```
-
-### 3.2 导航到搜索页
-```
-browser action=navigate url="https://www.chinadrugtrials.org.cn/clinicaltrials.searchlist.dhtml"
-```
-
-### 3.3 等待页面加载
-等待 3-5 秒让瑞数 JS 执行完成。
-
-### 3.4 输入搜索关键词
-使用 snapshot 获取页面元素引用，然后在搜索框输入药品名称。
-
-### 3.5 抓取结果
-使用 snapshot 获取结果页面内容，解析表格数据。
-
-### 3.6 解析并格式化
-将抓取到的数据转换为标准 TrialResult 格式。
-
-**注意：** 如果 browser tool 不可用或超时，提示用户手动访问：
-https://www.chinadrugtrials.org.cn/clinicaltrials.searchlist.dhtml
-
-## Step 4: 字段提取
-
-每个临床试验提取以下字段：
-
-| 字段 | 说明 |
-|-----|-----|
-| 临床ID | NCT编号 或 CTR编号 |
-| 药品名称/代码 | 试验药物名称或代码 |
-| 适应症 | 治疗的疾病 |
-| Sponsor | 申办方 |
-| 最近更新 | 最后更新日期 |
-| 当前状态 | Recruiting/Completed/Terminated 等 |
-| 临床阶段 | Phase I/II/III |
-| 计划入组人数 | 目标招募人数 |
-| 开始日期 | 试验开始时间 |
-| 预计完成日期 | 预计结束时间 |
-| 对照药物 | 对照组用药 |
-| Primary Outcome | 主要终点指标 |
-| Secondary Outcome | 次要终点指标 |
-| 网址链接 | 试验详情页URL |
-| 数据来源 | clinicaltrials.gov 或 chinadrugtrials |
-
-## Step 5: 输出结果
-
-### 5.1 表格格式
-
-使用 Markdown 表格展示，每行一个临床试验：
-
-```markdown
-| 临床ID | 药品名称 | 适应症 | Sponsor | 状态 | 阶段 | 入组人数 | 开始日期 | 完成日期 | 对照药物 | Primary Outcome | Secondary Outcome | 链接 | 来源 |
-|--------|---------|--------|---------|------|------|---------|---------|---------|---------|----------------|------------------|------|------|
-| NCT048... | Keytruda | NSCLC | Merck | Recruiting | Phase III | 600 | 2024-01 | 2027-12 | Placebo | OS, PFS | ORR, Safety | [link](https://...) | CTG |
-```
-
-### 5.2 分源统计
-
-在表格后显示：
-```
----
-clinicaltrials.gov: X 条记录
-chinadrugtrials.org.cn: Y 条记录
-总计: Z 条记录
-```
-
-## Step 6: 写入药品管线文件
+## Step 4: 写入药品管线文件
 
 > ⚠️ **强制步骤**：搜索完成后必须执行，不可跳过。
 
-### 6.1 读取格式规范
+### 4.1 读取格式规范
 
 管线表格的列定义、链接格式、排序规则等全部以 drug-spec.md 为准：
 ```bash
@@ -128,7 +62,7 @@ cat ../schema/drug-spec.md
 ```
 关注「当前临床管线」章节的格式要求。
 
-### 6.2 处理 drug/{药品名}.md
+### 4.2 处理 drug/{药品名}.md
 
 ```
 文件存在？
@@ -143,7 +77,7 @@ cat ../schema/drug-spec.md
               + 关键里程碑（空） + 当前临床管线
 ```
 
-### 6.3 去重合并策略
+### 4.3 去重合并策略
 
 - **去重键**：NCT编号（从试验ID中提取）
 - **已存在** → 更新可能变化的字段（状态、更新日期、入组数等），保留原有数据
@@ -152,11 +86,11 @@ cat ../schema/drug-spec.md
 - **排序**：按阶段（Phase III → II → I），同阶段按开始日期倒序
 - **⚠️ trial_id 格式**：脚本返回的 trial_id 已包含完整标识符（如 `NCT06104566`），构造 Markdown 链接时直接使用 `[{trial_id}]({url})`，**不要额外添加 `NCT` 前缀**
 
-### 6.4 写入
+### 4.4 写入
 
-将合并后的内容写回 `{drug_dir}/{药品名}.md`。
+将与 Step 3 完全相同的 schema 对齐表格写回 `{drug_dir}/{药品名}.md`。只更新 `### clinicaltrials.gov` 子表，保留 `### chinadrugtrials.org.cn` 占位和人工内容不变。
 
-### 6.5 可选：保存搜索结果到 trials/ 目录
+### 4.5 可选：保存搜索结果到 trials/ 目录
 
 如需保留原始搜索结果，可额外保存到：
 ```
@@ -172,12 +106,9 @@ cat ../schema/drug-spec.md
 - 方法：GET 请求，支持 JSON 响应
 - 无需认证，无速率限制（合理使用）
 
-### chinadrugtrials.org.cn（瑞数防护）
+### chinadrugtrials.org.cn（暂未启用）
 
-- **反爬技术**：瑞数信息 WAF（River Security）
-- **特征**：HTTP 202 + 动态 JS Cookie + 浏览器指纹检测
-- **绕过方式**：使用真实浏览器（DrissionPage / OpenClaw Browser Tool）
-- **不推荐**：requests / curl / headless Selenium
+该数据源因瑞数反爬机制暂未接入当前 workflow。恢复时应单独设计并验证 Python 抓取与解析流程，不得由 agent 临时手工补表。
 
 ## 常见问题
 
