@@ -1,14 +1,13 @@
 ---
-name: clinical-data-indexer
-  临床索引增量归档执行步骤（供clinical-research主skill调用）
-
-  当主skill路由到本文件时，按以下步骤执行：
+name: clinical-indexer
+description: |
+  定时或手动扫描全部 summary，分别查漏补缺 drug/ 和 indication/ 索引。
 ---
 
 # 临床索引增量归档
 
 > 本文件由 clinical-research/SKILL.md 路由后读取执行。
-> 本 workflow 面向手动或 cron 定时运行，只按来源链接存在性查漏补缺。
+> 本 workflow 面向手动或 cron 定时运行，按 summary 身份字段计算期望页面，再检查来源链接是否存在。
 
 ## 调用接口
 
@@ -43,7 +42,7 @@ Cron 直接调用时必须：
 
 Cron 调用提示词应明确要求直接执行本文件，不要只发送“更新索引”等模糊指令。
 
-两种调用都遵守相同的幂等规则：已有 `> 来源: [[summary/...]]` 链接的 summary 跳过，没有链接的才归档。
+两种调用都遵守相同的幂等规则：只有当 summary 来源链接已存在于按身份字段计算出的期望 drug 页面和期望 indication 页面时，该维度才跳过；链接出现在其他页面不算已归档。
 
 ## 定位与约束
 
@@ -84,60 +83,67 @@ find ${summary_dir} -mindepth 2 -name "*.md" -type f
 跳过 `summary_dir/INDEX.md` 等顶层文件。每个 summary 的唯一标识是相对于数据根目录的路径：
 
 ```text
-summary/{药品名}/{文件名}.md
+summary/{drug_id}/{文件名}.md
 ```
 
 对每个 summary 读取：
 
-- YAML：`drug`、`drug_aliases`、`indication`、`companies`、`phase`、`trial_name`、`conference`、`created`
+- YAML：`drug_id`、`drug`、`drug_aliases`、`indication_id`、`indication`、`companies`、`phase`、`trial_name`、`conference`、`created`、`verification`、`verification_fail_count`
 - 正文：`> 来源原文: [[raw/...]]` 行
 - 临床有效性和安全性数据表
 
-缺少 `drug` 或 `indication` 的 summary 记录警告，不纳入对应维度的本轮更新；不要修改该 summary。
+只接受同时满足下列条件的 summary：
+
+- `drug_id`、`drug`、`indication_id`、`indication` 存在
+- `verification: passed`
+- `verification_fail_count: 0`
+- 存在 `## 数据一致性审核` 章节
+
+不满足任一条件时记录跳过原因，不纳入 drug 或 indication 的本轮更新；不要修改该 summary。
 
 ## Step 3: 计算 drug 归档缺口
 
 扫描 `drug_dir` 根目录下所有药品索引文件，提取所有来源链接：
 
 ```text
-> 来源: [[summary/{药品}/{文件}.md]]
+> 来源: [[summary/{drug_id}/{文件}.md]]
 ```
 
-将目标路径规范化并去重，得到：
+对每个合格 summary，按 `drug_id` 计算期望目标：
 
 ```text
-organized_for_drug
+expected_drug_page = drug/{drug_id}.md
 ```
 
-计算：
+仅检查该期望 drug 页面中的 `> 来源:` 行是否包含该 summary 路径：
 
 ```text
-missing_from_drug = all_summaries - organized_for_drug
+missing_from_drug = summaries whose path is absent from expected_drug_page
 ```
 
-只要 summary 路径已经出现在任一 `drug/*.md` 的 `> 来源:` 行中，就视为 drug 维度已归档。
+同一 summary 若出现在其他 drug 页面，记录为来源链接完整性错误；不能视为已归档到期望 drug 页面。
 
 ## Step 4: 计算 indication 归档缺口
 
 扫描 `indication_dir` 根目录下所有适应症索引文件，提取所有来源链接：
 
 ```text
-> 来源: [[summary/{药品}/{文件}.md]]
+> 来源: [[summary/{drug_id}/{文件}.md]]
 ```
 
-将目标路径规范化并去重，得到：
+对每个合格 summary，按 `indication_id` 计算期望目标：
 
 ```text
-organized_for_indication
+expected_indication_page = indication/{indication_id}.md
 ```
 
-计算：
+仅检查该期望 indication 页面中的 `> 来源:` 行是否包含该 summary 路径：
 
 ```text
-missing_from_indication = all_summaries - organized_for_indication
+missing_from_indication = summaries whose path is absent from expected_indication_page
 ```
 
-只要 summary 路径已经出现在任一 `indication/*.md` 的 `> 来源:` 行中，就视为 indication 维度已归档。
+同一 summary 若出现在其他 indication 页面，记录为来源链接完整性错误；不能视为已归档到期望 indication 页面。
 
 ## Step 5: 更新 drug 索引
 
@@ -147,8 +153,8 @@ missing_from_indication = all_summaries - organized_for_indication
 
 否则：
 
-1. 按 summary 的 `drug` 字段分组。
-2. 按 `drug-spec.md` 的药品名称优先级确定 `drug/{药品名}.md`。
+1. 按 summary 的 `drug_id` 字段分组。
+2. 使用 `drug/{drug_id}.md` 作为唯一目标文件。
 3. 文件不存在时，按 `drug-spec.md` 创建完整药品索引。
 4. 文件存在时，只追加本轮缺失 summary 对应的适应症、临床数据、关键里程碑和来源链接。
 5. 保留已有内容和人工补充。
@@ -165,8 +171,8 @@ missing_from_indication = all_summaries - organized_for_indication
 
 否则：
 
-1. 按 summary 的 `indication` 字段分组。
-2. 按 `indication-spec.md` 的命名规则确定 `indication/{适应症名}.md`。
+1. 按 summary 的 `indication_id` 字段分组。
+2. 使用 `indication/{indication_id}.md` 作为唯一目标文件。
 3. 文件不存在时，按 `indication-spec.md` 创建完整适应症索引。
 4. 文件存在时，只追加本轮缺失 summary 对应的药品数据和来源链接。
 5. 保留已有内容和人工补充。

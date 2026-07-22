@@ -15,9 +15,9 @@ description: |
 
 - ✅ 必须使用 Python 脚本执行搜索和字段提取
 - ✅ 当前版本只查询 clinicaltrials.gov；chinadrugtrials.org.cn 仅保留 schema 占位，暂不查询
-- ✅ 所有结果全部罗列，不去重
+- ✅ API 返回的所有结果全部罗列；写入已有 drug 页面时按 NCT 编号幂等合并，避免同一试验重复出现
 - ✅ 输出为表格格式
-- ✅ 搜索完成后必须将结果写入 `drug/{药品名}.md` 的临床管线章节
+- ✅ 搜索完成后必须将结果写入 `drug/{drug_id}.md` 的临床管线章节
 
 ## 数据源
 
@@ -32,6 +32,8 @@ description: |
 - **药品名称**：如 "Pembrolizumab"、"Keytruda"、"PD-1"
 - **适应症**（可选）：如 "非小细胞肺癌"、"NSCLC"
 - **Sponsor**（可选）：如 "Merck"、"AstraZeneca"
+
+同时按 `drug-spec.md` 的命名优先级确定 `drug_id`，用于定位 `drug/{drug_id}.md`；查询参数仍使用用户提供的药品名称或已确认别名。
 
 ## Step 2: 执行 clinicaltrials.gov 查询
 
@@ -48,7 +50,7 @@ python3 {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适
 - 按 `../schema/drug-spec.md` 的“当前临床管线”格式向用户展示。
 - 不得新增“来源”或“链接”列；试验 URL 已嵌入试验 ID。
 - 不得自行重排表格、修改数字、补全缺失值或根据常识推断国家。
-- 脚本无法获得的字段统一保留为 `—` 或 API 返回的规范空值。
+- 脚本无法获得的字段统一为 `—`。
 
 ## Step 4: 写入药品管线文件
 
@@ -62,7 +64,7 @@ cat ../schema/drug-spec.md
 ```
 关注「当前临床管线」章节的格式要求。
 
-### 4.2 处理 drug/{药品名}.md
+### 4.2 处理 drug/{drug_id}.md
 
 ```
 文件存在？
@@ -88,7 +90,7 @@ cat ../schema/drug-spec.md
 
 ### 4.4 写入
 
-将与 Step 3 完全相同的 schema 对齐表格写回 `{drug_dir}/{药品名}.md`。只更新 `### clinicaltrials.gov` 子表，保留 `### chinadrugtrials.org.cn` 占位和人工内容不变。
+将与 Step 3 完全相同的 schema 对齐表格写回 `{drug_dir}/{drug_id}.md`。只更新 `### clinicaltrials.gov` 子表，保留 `### chinadrugtrials.org.cn` 占位和人工内容不变。
 
 ### 4.5 可选：保存搜索结果到 trials/ 目录
 
@@ -119,8 +121,8 @@ cat ../schema/drug-spec.md
 
 ### Q: 字段缺失？
 - 部分字段在原始数据中可能为空
-- 用 "N/A" 或 "-" 标记缺失字段
+- 用 `—` 标记缺失字段
 
-### Q: chinadrugtrials 无法访问？
-- 确认 OpenClaw browser tool 可用
-- 手动访问：https://www.chinadrugtrials.org.cn/
+### Q: chinadrugtrials 为什么没有结果？
+- `--source cdt` 是预留接口，当前未实现。
+- 不要把手工抓取的注册信息直接写入受管理的 drug 管线表；未来 CDT 同步器启用后统一处理。

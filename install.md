@@ -103,6 +103,14 @@ git -C {skill_root}/clinical-research pull
 {skill_root}/clinical-research/
 ```
 
+### 3.1 安装临床试验查询依赖
+
+如需使用 `drug-trials-search` 查询 ClinicalTrials.gov，安装其 Python 依赖：
+
+```bash
+python -m pip install -r {skill_root}/clinical-research/drug-trials-search/requirements.txt
+```
+
 ### 4. 检查安装完整性
 
 安装后确认以下文件和目录存在：

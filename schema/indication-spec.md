@@ -6,17 +6,17 @@
 
 ## 文件命名规则
 
-- **格式**: `{适应症名称}.md`
+- **格式**: `{indication_id}.md`
 - **示例**: `NSCLC_1L.md`, `胃癌一线.md`, `HER2阳性乳腺癌.md`
 - **特殊字符处理**:
   - 空格 → 下划线
   - 括号 → 移除
   - 斜杠 → 下划线
 - **治疗线数区分**:
-  - 一线：`{适应症}_1L` 或 `{适应症}一线`
-  - 二线：`{适应症}_2L` 或 `{适应症}二线`
-  - 三线+：`{适应症}_3L+` 或 `{适应症}后线`
-  - **不同线数视为不同适应症，分开文件**
+  - 一线：`{适应症}_1L`
+  - 二线：`{适应症}_2L`
+  - 三线+：`{适应症}_3L+`
+  - **不同线数视为不同适应症，分开文件；无法判断时 `line: null`，不得猜测为 1L**
 
 ---
 
@@ -24,7 +24,8 @@
 
 ```yaml
 ---
-indication: {适应症名称}      # 必需，与文件名一致
+indication_id: {规范适应症ID} # 必需，与文件名一致，如 NSCLC_1L
+indication: {适应症名称}      # 必需，展示名称
 category: {适应症类别}        # 可选，如"NSCLC"、"胃癌"
 line: {治疗线数}             # 可选，如"1L"、"2L"、"3L+"
 aliases: [{别名1}, {别名2}]  # 可选，如["非小细胞肺癌一线", "NSCLC一线"]
@@ -61,10 +62,10 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 | 药品 | 公司 | 阶段 | ORR | mPFS | mOS | 安全性要点 | 最新进展 |
 |------|------|------|-----|------|-----|-----------|---------|
-| [{药品A}](../drug/{药品A}.md) | 公司A | Phase III | 41.4% | 11.3mo | 22.1mo | 3级AE 25% | ASCO 2026 |
-| [{药品B}](../drug/{药品B}.md) | 公司B | Phase II | 35.2% | 8.5mo | N/A | 3级AE 18% | ESMO 2025 |
+| [{drug_id_A}](../drug/{drug_id_A}.md) | 公司A | Phase III | 41.4% | 11.3mo | 22.1mo | 3级AE 25% | ASCO 2026 |
+| [{drug_id_B}](../drug/{drug_id_B}.md) | 公司B | Phase II | 35.2% | 8.5mo | — | 3级AE 18% | ESMO 2025 |
 
-> 来源: [[summary/{药品1}/{文件1}.md]] | [[summary/{药品2}/{文件2}.md]]
+> 来源: [[summary/{drug_id_1}/{文件1}.md]] | [[summary/{drug_id_2}/{文件2}.md]]
 ```
 
 **表格列说明**：
@@ -95,7 +96,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 |------|-----|------|-----|
 | 药品A | 41.4% | 34.5% | 87.9% |
 
-> 来源: [[summary/{药品}/xxx.md]]
+> 来源: [[summary/{drug_id}/xxx.md]]
 
 #### PFS 对比
 
@@ -103,7 +104,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 |------|------|-----|---------|
 | 药品A | 11.3mo | 0.62 | <0.0001 |
 
-> 来源: [[summary/{药品}/xxx.md]]
+> 来源: [[summary/{drug_id}/xxx.md]]
 ```
 
 ### 4. 安全性对比（可选）
@@ -115,7 +116,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 |------|-----------|--------|-----------|
 | 药品A | 25.3% | 恶心、疲乏 | 5.2% |
 
-> 来源: [[summary/{药品}/xxx.md]]
+> 来源: [[summary/{drug_id}/xxx.md]]
 ```
 
 ### 5. 数据时间线
@@ -128,6 +129,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 ```markdown
 ---
+indication_id: sq_NSCLC_1L
 indication: 鳞状非小细胞肺癌一线
 category: NSCLC
 line: 1L
@@ -151,8 +153,8 @@ updated: 2025-05-31
 
 | 药品 | 公司 | 阶段 | ORR | mPFS | mOS | 安全性要点 | 最新进展 |
 |------|------|------|-----|------|-----|-----------|---------|
-| [ABC123](../drug/ABC123.md) | BigPharma | Phase III | 75.6% | 11.14mo | N/A | ≥3级TRAE 66.9% | ASCO 2026 |
-| [ABC456](../drug/ABC456.md) | GlobalPharma | Phase III | 66.5% | 6.90mo | N/A | ≥3级TRAE 62.3% | EXAMPLE-407 |
+| [ABC123](../drug/ABC123.md) | BigPharma | Phase III | 75.6% | 11.14mo | — | ≥3级TRAE 66.9% | ASCO 2026 |
+| [ABC456](../drug/ABC456.md) | GlobalPharma | Phase III | 66.5% | 6.90mo | — | ≥3级TRAE 62.3% | EXAMPLE-407 |
 
 > 来源: [[summary/ABC123/ABC123@Example_Cancer_1L.md]] | [[summary/ABC456/ABC456@Example_Cancer_1L.md]]
 
@@ -180,7 +182,7 @@ updated: 2025-05-31
 从 summary 文件判断治疗线数：
 - 检查 `trial_name` 或正文中是否有 "first-line"、"1L"、"一线" 等关键词
 - 检查入组人群是否为"初治"、"既往未接受治疗"
-- 无法判断时默认为 `1L` 或留空
+- 无法判断时 `line: null`，不得猜测为 `1L`
 
 ---
 
@@ -188,13 +190,13 @@ updated: 2025-05-31
 
 生成文件后，检查以下项：
 
-- [ ] frontmatter 包含必需字段：indication
-- [ ] 文件名与 indication 字段一致
+- [ ] frontmatter 包含必需字段：indication_id、indication
+- [ ] 文件名与 indication_id 字段一致
 - [ ] 治疗线数（line）正确标注
 - [ ] 概述 部分介绍治疗背景
 - [ ] 在研药品 表格横向对比有效性和安全性，表格后有 `> 来源:` 行
 - [ ] 表格列名一致
 - [ ] 药品链接正确（指向 drug/*.md）
-- [ ] 来源链接使用 `[[summary/{药品}/...]]` 内联格式
+- [ ] 来源链接使用 `[[summary/{drug_id}/...]]` 内联格式
 - [ ] 按阶段排序（Phase III优先）
 - [ ] 数据时间线 按时间排序

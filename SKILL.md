@@ -46,9 +46,9 @@ PREFLIGHT:
 ```
 ~/clinical/
 ├── raw/          # 原始资料（带YAML frontmatter）
-├── summary/      # 规范摘要（按药品分子目录组织：summary/{药品名}/{药品名}@{适应症}.md，schema/summary-spec.md）
-├── drug/         # 药品索引（平铺：{药品名}.md）
-├── indication/   # 适应症索引
+├── summary/      # 规范摘要（summary/{drug_id}/{drug_id}@{indication_id}.md）
+├── drug/         # 药品索引（平铺：{drug_id}.md）
+├── indication/   # 适应症索引（平铺：{indication_id}.md）
 ├── trials/       # 临床试验查询结果
 └── attachments/  # 图片附件
 ```
@@ -59,8 +59,8 @@ PREFLIGHT:
 
 | 用户输入 | 子 Skill | 动作 |
 |---------|---------|------|
-| "提取临床数据"、包含 URL | clinical-extractor | 完整流程: URL → raw/ → summary/ |
-| 包含 PDF | clinical-extractor | 提取 PDF 并生成摘要 |
+| 明确要求“提取临床数据”且提供 URL | clinical-extractor | 完整流程: URL → raw/ → summary/ |
+| 明确要求“提取临床数据”且提供 PDF | clinical-extractor | 提取 PDF 并生成摘要 |
 | "扫描/批处理临床数据" | batch-extractor | 批量: raw/ → summary/ |
 | "更新/同步/扫描索引" | clinical-indexer | 增量扫描全部 summary，分别补齐 drug/ 与 indication/ |
 | "整理临床数据" / "归档临床数据" / "整理数据" | clinical-indexer | 增量模式：扫描未整理的 summary → 更新 drug/indication |
@@ -69,7 +69,7 @@ PREFLIGHT:
 | "查询药品临床试验" / "搜索临床试验" | drug-trials-search | Python脚本查询 CTG |
 | 药品名称 + "临床试验" | drug-trials-search | 生成表格，列出所有结果 |
 | "评价临床数据" / "评估临床试验" / "怎么看这个数据" | clinical-trial-evaluator | 提供系统化的试验数据评价框架 |
-| 无明确指令 | clinical-indexer | 批量扫描并更新所有索引 |
+| 无明确指令 | — | 要求用户说明要提取、归档、查询还是评价；不得默认写入索引 |
 
 ## 核心原则
 
@@ -87,4 +87,4 @@ PREFLIGHT:
 ✅ **正确**：严格添加 `source:` 和 `created:` 到raw/文件
 
 ❌ **错误**：summary/文件命名随意  
-✅ **正确**：使用 `{药品}@{适应症}.md` 格式
+✅ **正确**：使用 `{drug_id}@{indication_id}.md` 格式

@@ -48,6 +48,12 @@ git clone https://github.com/abinww/clinical-research.git
 {skill_root}/clinical-research/
 ```
 
+如需查询 ClinicalTrials.gov，安装查询脚本依赖：
+
+```bash
+python -m pip install -r clinical-research/drug-trials-search/requirements.txt
+```
+
 ### 首次初始化
 
 安装完成后，如果目录下不存在 `config.yaml`，agent 会自动读取 `initial.md` 询问数据目录并生成配置。默认数据目录是 `~/clinical`。
@@ -91,9 +97,9 @@ git clone https://github.com/abinww/clinical-research.git
 ```text
 ~/clinical/
 ├── raw/          # 原始资料（带 YAML frontmatter）
-├── summary/      # 结构化摘要（按药品分子目录组织：summary/{药品名}/）
-├── drug/         # 药品索引（平铺：{药品名}.md）
-├── indication/   # 适应症索引
+├── summary/      # 结构化摘要（summary/{drug_id}/{drug_id}@{indication_id}.md）
+├── drug/         # 药品索引（平铺：{drug_id}.md）
+├── indication/   # 适应症索引（平铺：{indication_id}.md）
 ├── trials/       # 临床试验查询结果
 └── attachments/  # 图片附件
 ```
@@ -104,7 +110,7 @@ git clone https://github.com/abinww/clinical-research.git
 | --- | --- | --- |
 | `raw/` | 工具（tavily_extract / pdftotext 等）的原始输出，禁止大模型改写 | clinical-extractor、batch-extractor |
 | `summary/` | 结构化临床摘要，按药品分子目录组织，必须通过数据一致性审核 | clinical-extractor、batch-extractor |
-| `drug/` | 药品索引，按药品平铺，一药一文件 | clinical-extractor、clinical-indexer、drug-trials-search |
+| `drug/` | 药品索引，按药品平铺，一药一文件；创建时可由任一 writer 建立基本信息，clinical-extractor/clinical-indexer 维护临床数据汇总和关键里程碑，drug-trials-search 仅维护当前临床管线 | clinical-extractor、clinical-indexer、drug-trials-search |
 | `indication/` | 适应症索引，按适应症平铺 | clinical-indexer |
 | `trials/` | 临床试验注册查询的原始结果 | drug-trials-search |
 | `attachments/` | 图片附件 | clinical-extractor（多模态提取） |
@@ -114,6 +120,8 @@ git clone https://github.com/abinww/clinical-research.git
 ```text
 clinical-research/config.yaml
 ```
+
+`config.yaml` 是本地配置，不应提交；可从 `config.template.yaml` 创建，并填入实际的绝对数据目录路径。
 
 ## 注意事项
 

@@ -1,6 +1,8 @@
+import io
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 
 class _RequestsStub:
@@ -17,7 +19,16 @@ class _RequestsStub:
 
 sys.modules.setdefault("requests", _RequestsStub)
 
-from search_trials import TrialResult, extract_countries, generate_markdown_table, generate_pipeline_markdown
+import search_trials
+from search_trials import (
+    ClinicalTrialsGov,
+    TrialResult,
+    display_value,
+    extract_countries,
+    generate_markdown_table,
+    generate_pipeline_markdown,
+    normalize_phase,
+)
 
 
 class SearchTrialsTests(unittest.TestCase):
@@ -69,6 +80,97 @@ class SearchTrialsTests(unittest.TestCase):
 
         self.assertIn("### clinicaltrials.gov", output)
         self.assertNotIn("### chinadrugtrials.org.cn", output)
+
+    def test_normalize_phase_formats_combined_ctg_phases(self):
+        self.assertEqual(normalize_phase("PHASE2, PHASE3"), "Phase II, Phase III")
+
+    def test_display_value_normalizes_missing_values(self):
+        self.assertEqual(display_value(None), "—")
+        self.assertEqual(display_value(""), "—")
+        self.assertEqual(display_value("N/A"), "—")
+        self.assertEqual(display_value("value"), "value")
+
+    def test_search_follows_next_page_token_until_max_results(self):
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def __init__(self):
+                self.headers = {}
+                self.calls = []
+
+            def get(self, _url, params, timeout):
+                self.calls.append(params.copy())
+                if len(self.calls) == 1:
+                    return Response({"studies": [{}], "nextPageToken": "page-2"})
+                return Response({"studies": [{}]})
+
+        client = ClinicalTrialsGov()
+        client.session = Session()
+        client._parse_results = lambda payload: [payload["studies"][0]]
+
+        results = client.search("ABC123", max_results=2)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(client.session.calls[1]["pageToken"], "page-2")
+
+    def test_search_follows_all_pages_when_max_results_is_omitted(self):
+        class Response:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def __init__(self):
+                self.headers = {}
+                self.calls = []
+
+            def get(self, _url, params, timeout):
+                self.calls.append(params.copy())
+                if len(self.calls) == 1:
+                    return Response({"studies": [{}], "nextPageToken": "page-2"})
+                return Response({"studies": [{}]})
+
+        client = ClinicalTrialsGov()
+        client.session = Session()
+        client._parse_results = lambda payload: [payload["studies"][0]]
+
+        results = client.search("ABC123")
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(len(client.session.calls), 2)
+
+    def test_json_format_writes_only_json_to_stdout(self):
+        trial = TrialResult()
+        trial.trial_id = "NCT00000001"
+        trial.source = "CTG"
+
+        class Client:
+            def search(self, **_kwargs):
+                return [trial]
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch.object(search_trials, "ClinicalTrialsGov", return_value=Client()), \
+             patch.object(sys, "argv", ["search_trials.py", "--drug", "ABC123", "--format", "json"]), \
+             patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            search_trials.main()
+
+        payload = __import__("json").loads(stdout.getvalue())
+        self.assertEqual(payload[0]["临床ID"], "NCT00000001")
+        self.assertIn("查询 ClinicalTrials.gov", stderr.getvalue())
 
 
 if __name__ == "__main__":

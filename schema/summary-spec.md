@@ -22,12 +22,12 @@
 
 ## Configuration
 
-**命名格式**: `summary/` 目录按药品分子目录组织，每个药品一个子目录 `summary/{药品名称}/`，子目录下的摘要文件必须命名为 `{药品名称}@{适应症}.md`。
+**命名格式**: `summary/` 目录按药品分子目录组织，每个药品一个子目录 `summary/{drug_id}/`，子目录下的摘要文件必须命名为 `{drug_id}@{indication_id}.md`。
 
 `summary/` 文件名不得使用网页标题、raw 文件名或任意摘要标题。网页/PDF 标题只用于 `raw/` 文件命名。
 
-**药品名称优先级规则**（用于文件名）：
-按以下优先级选择药品名称，优先使用简洁、易读的名称：
+**药品身份优先级规则**（用于确定 `drug_id`）：
+按以下优先级选择药品身份，优先使用简洁、易读的标识：
 1. 开发代码（如 ABC123, ABC456, ABC789, ABC101）
 2. 短名称/缩写（如 exa-mab）
 3. 中文通用名（如 示例单抗, 示例ADC）
@@ -85,14 +85,18 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| drug | 字符串 | 药品通用名（必填） |
+| drug_id | 字符串 | 开发代码或规范短名（必填；用于 summary 目录、文件名和 drug 索引归档） |
+| drug | 字符串 | 药品通用名（必填；用于展示） |
 | drug_aliases | 数组 | 别名、商品名 |
+| indication_id | 字符串 | 规范适应症ID（必填；用于 indication 索引文件名） |
 | indication | 字符串 | 适应症（必填） |
 | companies | 数组 | 研发公司列表 |
 | phase | 字符串 | Phase I/II/III（必填） |
 | trial_name | 字符串 | 试验名称 |
 | conference | 字符串 | 学术会议或发布场合 |
 | created | 日期 | 数据来源日期 |
+| verification | 字符串 | 必填；仅允许 `passed`，表示独立 data verifier 已完成且 FAIL=0 |
+| verification_fail_count | 整数 | 必填；必须为 `0` |
 #### 有效性和安全性数据
 For effectiveness and safety data, present findings in **markdown table format**:
 
@@ -128,7 +132,7 @@ For effectiveness and safety data, present findings in **markdown table format**
   - ❌ 错误：`AAB001 (最大效果)` 或 `高剂量组`
   - ✅ 正确：`AAB001 6mg` 或 `对照组`
 - 不同终点可能基于不同分析人群（如总人群 vs 可评估人群），需分别分列
-- 缺乏的数据标注 "N/A"，不要将不同人群的数据混用
+- 缺乏的数据统一标注为 `—`，不要将不同人群的数据混用
 - 合并主要终点、次要终点、安全性到一个表格
 - 列名：`["指标", "实验组1", "实验组2", ...]` 或 `["指标", "实验组", "对照组"]`（如有对照）
 - 常见终点使用英文缩写（见 **Configuration** 中的"常见终点缩写列表"）
@@ -136,7 +140,7 @@ For effectiveness and safety data, present findings in **markdown table format**
 - 不要写95% CI置信区间
 - 时间指标（PFS/OS/DOR等）只写数字，不写单位（如 `11.3` 而非 `11.3个月`）
 - 百分比保留一位小数（如 `41.4%`）
-- 数值不存在的用 `N/A` 或 `NE`（未成熟/未评估）表示
+- 数值不存在的用 `—` 表示；明确“未成熟/未评估”时可使用 `NE`，并在备注中说明原因
 - 可在数值后用括号标注实际样本量（如 `11.3 (N=82)`）
 
 #### 数据一致性审核
@@ -176,7 +180,7 @@ For effectiveness and safety data, present findings in **markdown table format**
 - `TEAE`、`TRAE`、`AE`、`SAE` 不得混用；如原文术语不同，标记 `WARN` 或 `FAIL`
 - 时间单位不得擅自转换；如原文为 weeks，summary 写成 months，标记 `FAIL`
 - 原文没有的数据不得写成确定数据
-- 本章节仅用于溯源审核，不得作为 drug/ 或 indication/ 索引的数据来源
+- 只有 `verification: passed`、`verification_fail_count: 0` 且审核章节存在的 summary，才允许作为 drug/ 或 indication/ 索引的数据来源
 
 ### Step 3: File Content Structure
 
@@ -184,17 +188,21 @@ The generated markdown file should follow this template:
 
 ```markdown
 ---
-drug: {药品名}
+drug_id: {开发代码或规范短名}
+drug: {药品通用名}
 drug_aliases: [{别名1, 别名2}]
+indication_id: {规范适应症ID}
 indication: {适应症}
 companies: [{公司列表}]
 phase: {Phase}
 trial_name: {试验名称}
 conference: {学术会议}
 created: {YYYY-MM-DD}
+verification: passed
+verification_fail_count: 0
 ---
 
-# {药品名}@{适应症}
+# {drug_id}@{适应症}
 
 > 来源原文: [[raw/{原始文件名.md}]]
 
@@ -249,7 +257,7 @@ created: {YYYY-MM-DD}
 
 如果内容涉及多个药品或适应症：
 - 询问用户需要提取哪一个
-- 或生成多个 summary 文件
+- 或为每个药品生成带对应 `drug_id` 的 summary 文件
 
 ### 数据表格缺失
 

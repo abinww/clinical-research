@@ -25,6 +25,8 @@ env/
 # Local secrets and private configuration
 .env
 .env.*
+!.env.example
+config.yaml
 *.pem
 *.key
 *.p12

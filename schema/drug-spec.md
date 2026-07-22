@@ -6,18 +6,20 @@
 
 ## 数据来源边界
 
-`drug/` 文件只能基于已经通过数据一致性审核的 `summary/` 文件生成或更新。不得直接基于 `raw/` 文件、外部网页、PDF 或模型记忆生成药品索引数据。
+`## 基本信息` 可由任一 writer 在创建 drug 文件时建立；已有字段必须有可追溯来源，不得基于模型记忆补全。`## 临床数据汇总` 和 `## 关键里程碑` 只能由 `clinical-extractor` 或 `clinical-indexer` 基于已经通过数据一致性审核的 `summary/` 文件生成或更新。不得直接基于 `raw/` 文件、外部网页、PDF 或模型记忆生成这些章节。
 
-`summary/` 目录按药品分子目录组织：`summary/{药品名}/{药品名}@{适应症}.md`。
+`## 当前临床管线` 是唯一例外：其 `### clinicaltrials.gov` 子表允许由 ClinicalTrials.gov 官方 API 直接更新；`### chinadrugtrials.org.cn` 子表仅允许由其官方注册库数据直接更新。注册信息必须保留官方试验链接和子表更新时间，不得用于补充上方的临床疗效或安全性章节。
 
-如果关联 `summary/` 文件缺失、未完成数据一致性审核，或审核结果存在 `FAIL`，必须停止更新 `drug/`。
+`summary/` 目录按药品分子目录组织：`summary/{drug_id}/{drug_id}@{indication_id}.md`。
+
+如果关联 `summary/` 文件缺失、未完成数据一致性审核，或审核结果存在 `FAIL`，必须停止更新依赖 summary 的临床数据和关键里程碑章节。此限制不适用于创建基本信息或独立的官方注册管线子表。
 
 ## 文件命名规则
 
-- **格式**: `{药品名称}.md`
+- **格式**: `{drug_id}.md`
 
-**药品名称优先级规则**：
-按以下优先级选择药品名称，优先使用简洁、易读的名称：
+**药品身份优先级规则**：
+按以下优先级选择 `drug_id`，优先使用简洁、易读的标识：
 1. 开发代码（如 ABC123, ABC456, ABC789, ABC101）
 2. 短名称/缩写（如 exa-mab）
 3. 中文通用名（如 示例单抗, 示例ADC）
@@ -39,8 +41,9 @@
 
 ```yaml
 ---
-drug: {药品通用名}           # 必需，与文件名一致
-aliases: [{别名1}, {别名2}]  # 可选，包括商品名、代号等
+drug_id: {开发代码或规范短名} # 必需，与文件名一致
+drug: {药品通用名}           # 必需，展示通用名，不要求与文件名一致
+drug_aliases: [{别名1}, {别名2}]  # 可选，包括商品名、代号等
 category: {药物类别}          # 可选，如"单克隆抗体"、"小分子药物"
 target: {作用靶点}           # 可选，如"PD-1/VEGF"、"HER2"
 companies: [{公司1}, {公司2}]  # 可选，研发/商业化公司
@@ -108,7 +111,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 | 2024-12 | ESMO Asia | 6mg/kg | 37 | 56.2% | 89.0% | — | — | 剂量探索 |
 ```
 
-> 来源: [[summary/{药品名}/{文件名1}.md]] | [[summary/{药品名}/{文件名2}.md]]
+> 来源: [[summary/{drug_id}/{文件名1}.md]] | [[summary/{drug_id}/{文件名2}.md]]
 ```
 
 #### 固定列
@@ -232,8 +235,9 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 ```markdown
 ---
-drug: ABC123
-aliases: [示例单抗, Examplemab]
+drug_id: ABC123
+drug: Examplemab
+drug_aliases: [示例单抗, Examplemab]
 category: 单克隆抗体
 target: Target-A
 companies: [BigPharma]
@@ -310,8 +314,8 @@ updated: 2025-05-31
 
 生成文件后，检查以下项：
 
-- [ ] frontmatter 包含必需字段：drug
-- [ ] 文件名与 drug 字段一致
+- [ ] frontmatter 包含必需字段：drug_id、drug
+- [ ] 文件名与 drug_id 字段一致
 - [ ] 章节顺序：基本信息 → 临床数据汇总 → 关键里程碑 → 当前临床管线
 - [ ] 基本信息 表格完整
 - [ ] 临床数据汇总 按适应症分组，每个适应症后有 `> 来源:` 行

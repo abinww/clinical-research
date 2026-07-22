@@ -15,7 +15,7 @@ description: |
 
 - 必须按主步骤顺序执行,不得跳过（Step 1 → Step 2 → Step 3 → Step 4 → Step 5）。
 - `raw/` 是原始采集层,只保存工具提取结果,不允许大模型改写、总结、翻译、重排、删减或补全正文。
-- `summary/` 是结构化摘要层,按药品分子目录组织(`summary/{药品名称}/{文件}.md`),必须先通过数据一致性审核,再写入正式文件。
+- `summary/` 是结构化摘要层,按药品分子目录组织(`summary/{drug_id}/{drug_id}@{indication_id}.md`),必须先通过数据一致性审核,再写入正式文件。
 - 具体文件格式只以 `../schema/summary-spec.md` 和 `../schema/drug-spec.md` 为准;本 workflow 不重复定义格式细节。
 - 如果任一步失败,按该步骤的失败处理规则终止或回修,不得继续污染后续索引。
 
@@ -49,6 +49,8 @@ EXTRACTOR PREFLIGHT:
 - 原始来源标识:URL 或 PDF 文件名。
 - 数据来源日期:优先使用资料发布日期,否则使用当前日期。
 - raw 文件基础名:仅用于 `raw/` 文件命名。
+- `drug_id`: 按 `drug-spec.md` 的优先级确定，用于 summary/drug 文件路径。
+- `indication_id`: 按 `indication-spec.md` 的规范命名确定；治疗线无法判断时保留 `line: null`，不得猜测为 1L。
 
 raw 文件基础名确定规则:
 
@@ -59,8 +61,9 @@ raw 文件基础名确定规则:
 文件名分层规则:
 
 - `raw_filename`: 使用 raw 文件基础名,保存工具原始提取结果。
-- `summary_filename`: 按 `../schema/summary-spec.md` 生成,格式必须为 `{药品名称}@{适应症}.md`。
-- `drug_filename`: 按 `../schema/drug-spec.md` 的药品名称优先级生成,格式为 `{药品名称}.md`。
+- `drug_id`: 按 `../schema/drug-spec.md` 的药品身份优先级生成，用于目录、文件名和索引定位。
+- `summary_filename`: 按 `../schema/summary-spec.md` 生成，格式必须为 `{drug_id}@{indication_id}.md`。
+- `drug_filename`: 格式为 `{drug_id}.md`。
 
 ## Step 2: 去重检查
 
@@ -171,7 +174,7 @@ write path={raw_dir}/{raw_filename}.md content={YAML frontmatter + 原始提取�
 
 ## Step 4: 生成、审核并写入 summary/
 
-目标:从 `raw/` 生成规范化临床摘要,在 `summary/{药品名称}/` 子目录下,并在正式写入前完成数据一致性审核。
+目标:从 `raw/` 生成规范化临床摘要,在 `summary/{drug_id}/` 子目录下,并在正式写入前完成数据一致性审核。
 
 ### 4.1 生成 summary 草稿
 
@@ -206,7 +209,7 @@ data verifier subagent 禁止:
 
 - 如果存在 `FAIL`:不得保存正式 `summary/` 文件,不得进入 Step 5。必须回到 Step 4.1 修正 summary 草稿,然后重新执行 Step 4.2。
 - 如果存在 `WARN`:可以继续,但必须在最终返回报告中列出 WARN 项,提示用户人工复核。
-- 只有 `FAIL = 0` 时,才能写入正式 `summary/` 文件。
+- 只有 `FAIL = 0` 且审核覆盖完整时，才能在 summary YAML 写入 `verification: passed` 与 `verification_fail_count: 0`，并写入正式 `summary/` 文件。
 
 ### 4.4 写入 summary 文件
 
@@ -217,10 +220,11 @@ data verifier subagent 禁止:
 ```text
 SUMMARY WRITE GATE:
 - summary-spec.md read: yes
-- summary filename matches {药品名称}@{适应症}.md: yes
+- summary filename matches {drug_id}@{indication_id}.md: yes
 - "> 来源原文:" wikilink points to current raw file: yes
 - verifier completed: yes
 - verifier FAIL count: 0
+- summary verification: passed / 0: yes
 ```
 
 如果任一项不是 `yes` 或 `0`,不得写入正式 `summary/` 文件。
@@ -228,8 +232,8 @@ SUMMARY WRITE GATE:
 写入前必须确保子目录存在:
 
 ```
-mkdir -p {summary_dir}/{药品名称}
-write path={summary_dir}/{药品名称}/{summary_filename} content={符合 summary-spec.md 的完整 summary 内容}
+mkdir -p {summary_dir}/{drug_id}
+write path={summary_dir}/{drug_id}/{summary_filename} content={符合 summary-spec.md 的完整 summary 内容}
 ```
 
 不得单独生成审核报告文件;审核内容必须按 `summary-spec.md` 保存在同一个 `summary/` 文件中。
@@ -244,15 +248,15 @@ write path={summary_dir}/{药品名称}/{summary_filename} content={符合 summa
 
 ### 5.2 确定药品文件名
 
-从 Step 4 生成的 summary YAML 中提取 `drug` 和 `drug_aliases` 字段。
+从 Step 4 生成的 summary YAML 中提取 `drug_id`、`drug` 和 `drug_aliases` 字段。
 
-按 `drug-spec.md` 的药品名称优先级选择文件名:
+使用 summary 的 `drug_id` 作为文件名；drug_id 必须已按 `drug-spec.md` 的优先级生成:
 
 ```
 开发代码 > 短名称/缩写 > 中文通用名 > 英文通用名
 ```
 
-示例:摘要中 `drug="Examplemab"`,`aliases=["示例ADC", "ABC123", "exa-mab"]`,文件名选 `ABC123.md`。
+示例:摘要中 `drug_id="ABC123"`,`drug="Examplemab"`,`drug_aliases=["示例ADC", "exa-mab"]`,文件名为 `ABC123.md`。
 
 更新 drug 前必须通过:
 
@@ -261,24 +265,24 @@ DRUG WRITE GATE:
 - drug-spec.md read: yes
 - summary file exists: yes
 - summary verifier FAIL count: 0
-- drug filename follows priority rule: yes
+- drug filename matches summary drug_id: yes
 ```
 
-如果任一项不是 `yes` 或 `0`,不得写入或更新 `drug/`。
+如果任一项不是 `yes` 或 `0`,不得基于该 summary 更新 `## 临床数据汇总` 或 `## 关键里程碑`。创建 drug 文件时，任一 writer 可先建立 `## 基本信息`，但已有字段必须有来源，且不得借此补写未经审核的临床数据。
 
 ### 5.3 新建或增量更新
 
 检查:
 
 ```bash
-ls {drug_dir}/{药品名称}.md
+ls {drug_dir}/{drug_id}.md
 ```
 
 如果文件不存在:
 
 - 按 `drug-spec.md` 创建新药品索引文件。
 - 纳入本次 summary 的适应症、核心临床数据、来源链接和时间线。
-- 来源链接必须使用 vault 绝对路径,格式为 `> 来源: [[summary/{药品名称}/{summary_filename}]]`。
+- 来源链接必须使用 vault 根相对路径,格式为 `> 来源: [[summary/{drug_id}/{summary_filename}]]`。
 
 如果文件已存在:
 

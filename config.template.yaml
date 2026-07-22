@@ -1,0 +1,8 @@
+# Copy this file to config.yaml and replace every path with an absolute local path.
+data_dir: /absolute/path/to/clinical
+raw_dir: /absolute/path/to/clinical/raw
+summary_dir: /absolute/path/to/clinical/summary
+drug_dir: /absolute/path/to/clinical/drug
+indication_dir: /absolute/path/to/clinical/indication
+trials_dir: /absolute/path/to/clinical/trials
+attachments_dir: /absolute/path/to/clinical/attachments

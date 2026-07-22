@@ -16,9 +16,9 @@
 ```text
 ~/clinical/
 ├── raw/
-├── summary/      # 规范摘要（按药品分子目录组织：summary/{药品名}/）
-├── drug/         # 药品索引（平铺：{药品名}.md）
-├── indication/
+├── summary/      # 规范摘要（summary/{drug_id}/{drug_id}@{indication_id}.md）
+├── drug/         # 药品索引（平铺：{drug_id}.md）
+├── indication/   # 适应症索引（平铺：{indication_id}.md）
 ├── trials/
 └── attachments/
 ```
@@ -65,22 +65,24 @@ trials_dir: {data_dir}/trials        # 临床试验查询结果存放目录
 attachments_dir: {data_dir}/attachments  # 图片附件存放目录
 ```
 
-如果 `{data_dir}` 是 `~/clinical`，则配置应为：
+配置文件必须保存绝对路径。若用户选择默认目录，先解析为当前环境的绝对用户目录路径后再写入配置；不要把 `~` 原样写入 YAML。
+
+例如，默认目录解析为 `/home/<user>/clinical` 时，配置应为：
 
 ```yaml
 # clinical-research 数据目录配置
 # 所有子 skill 共享此配置
 
 # 根目录
-data_dir: ~/clinical
+data_dir: /home/<user>/clinical
 
 # 子目录
-raw_dir: ~/clinical/raw              # 原始资料存放目录
-summary_dir: ~/clinical/summary      # 规范摘要存放目录（按药品分子目录组织）
-drug_dir: ~/clinical/drug            # 药品索引存放目录（平铺）
-indication_dir: ~/clinical/indication  # 适应症索引存放目录
-trials_dir: ~/clinical/trials        # 临床试验查询结果存放目录
-attachments_dir: ~/clinical/attachments  # 图片附件存放目录
+raw_dir: /home/<user>/clinical/raw              # 原始资料存放目录
+summary_dir: /home/<user>/clinical/summary      # 规范摘要存放目录（按药品分子目录组织）
+drug_dir: /home/<user>/clinical/drug            # 药品索引存放目录（平铺）
+indication_dir: /home/<user>/clinical/indication  # 适应症索引存放目录
+trials_dir: /home/<user>/clinical/trials        # 临床试验查询结果存放目录
+attachments_dir: /home/<user>/clinical/attachments  # 图片附件存放目录
 ```
 
 如果 `config.yaml` 已经存在，说明可能已经初始化过。此时不要直接覆盖，应先询问用户是否要重新生成配置。
