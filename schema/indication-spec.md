@@ -156,7 +156,7 @@ updated: 2025-05-31
 | [ABC123](../drug/ABC123.md) | BigPharma | Phase III | 75.6% | 11.14mo | — | ≥3级TRAE 66.9% | ASCO 2026 |
 | [ABC456](../drug/ABC456.md) | GlobalPharma | Phase III | 66.5% | 6.90mo | — | ≥3级TRAE 62.3% | EXAMPLE-407 |
 
-> 来源: [[summary/ABC123/ABC123@Example_Cancer_1L.md]] | [[summary/ABC456/ABC456@Example_Cancer_1L.md]]
+> 来源: [[summary/ABC123/ABC123@Example_Cancer_1L@ASCO2026.md]] | [[summary/ABC456/ABC456@Example_Cancer_1L@EXAMPLE407.md]]
 
 ## 数据时间线
 

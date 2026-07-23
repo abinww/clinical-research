@@ -34,7 +34,7 @@
 
 **Interfaces:**
 - Consumes: YAML fields from `schema/summary-spec.md`.
-- Produces: qualified summary paths as `summary/{drug_id}/{drug_id}@{indication_id}.md`, expected drug pages as `drug/{drug_id}.md`, and expected indication pages as `indication/{indication_id}.md`.
+- Produces: qualified summary paths as `summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md`, expected drug pages as `drug/{drug_id}.md`, and expected indication pages as `indication/{indication_id}.md`.
 
 - [ ] **Step 1: Record the expected contracts before changing docs**
 

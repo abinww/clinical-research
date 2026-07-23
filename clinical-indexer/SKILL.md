@@ -88,13 +88,13 @@ summary/{drug_id}/{文件名}.md
 
 对每个 summary 读取：
 
-- YAML：`drug_id`、`drug`、`drug_aliases`、`indication_id`、`indication`、`companies`、`phase`、`trial_name`、`conference`、`created`、`verification`、`verification_fail_count`
+- YAML：`drug_id`、`drug`、`drug_aliases`、`indication_id`、`indication`、`source_label`、`source_type`、`published_date`、`combination_regimen`、`clinical_match_key`、`companies`、`phase`、`trial_name`、`conference`、`created`、`verification`、`verification_fail_count`
 - 正文：`> 来源原文: [[raw/...]]` 行
 - 临床有效性和安全性数据表
 
 只接受同时满足下列条件的 summary：
 
-- `drug_id`、`drug`、`indication_id`、`indication` 存在
+- `drug_id`、`drug`、`indication_id`、`indication`、`source_label`、`source_type`、`published_date`、`combination_regimen`、`clinical_match_key` 存在
 - `verification: passed`
 - `verification_fail_count: 0`
 - 存在 `## 数据一致性审核` 章节
@@ -156,10 +156,11 @@ missing_from_indication = summaries whose path is absent from expected_indicatio
 1. 按 summary 的 `drug_id` 字段分组。
 2. 使用 `drug/{drug_id}.md` 作为唯一目标文件。
 3. 文件不存在时，按 `drug-spec.md` 创建完整药品索引。
-4. 文件存在时，只追加本轮缺失 summary 对应的适应症、临床数据、关键里程碑和来源链接。
+4. 文件存在时，按 `clinical_match_key` 合并本轮 summary：匹配时补充新增指标、分组、样本量和随访，不新增重复临床记录；不匹配时追加独立记录。
 5. 保留已有内容和人工补充。
-6. 写入前再次确认来源链接未存在，确保重复运行不会重复追加。
-7. 某个药品写入失败时记录错误，继续处理其他药品。
+6. 同一字段数值冲突时不得静默覆盖；并列保留不同值、各自来源和“数据差异待人工确认”标记。
+7. 无论是否合并，都保留所有 summary 来源链接；写入前再次确认当前来源链接未存在，确保重复运行不会重复追加。
+8. 某个药品写入失败时记录错误，继续处理其他药品。
 
 单个 summary 已归档到 drug/，但仍未归档到 indication/ 时，不因 drug 已归档而跳过 indication 维度。
 
@@ -174,7 +175,7 @@ missing_from_indication = summaries whose path is absent from expected_indicatio
 1. 按 summary 的 `indication_id` 字段分组。
 2. 使用 `indication/{indication_id}.md` 作为唯一目标文件。
 3. 文件不存在时，按 `indication-spec.md` 创建完整适应症索引。
-4. 文件存在时，只追加本轮缺失 summary 对应的药品数据和来源链接。
+4. 文件存在时，按 summary 的 `indication_id` 归档药品数据和来源链接；不删除旧来源。
 5. 保留已有内容和人工补充。
 6. 写入前再次确认来源链接未存在，确保重复运行不会重复追加。
 7. 某个适应症写入失败时记录错误，继续处理其他适应症。

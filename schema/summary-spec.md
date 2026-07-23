@@ -22,7 +22,7 @@
 
 ## Configuration
 
-**命名格式**: `summary/` 目录按药品分子目录组织，每个药品一个子目录 `summary/{drug_id}/`，子目录下的摘要文件必须命名为 `{drug_id}@{indication_id}.md`。
+**命名格式**: `summary/` 目录按药品分子目录组织，每个药品一个子目录 `summary/{drug_id}/`，每个来源快照必须命名为 `{drug_id}@{indication_id}@{source_label}.md`。同一来源重新提取时复用同一 `source_label`，不同来源或同标签冲突时生成新的快照。
 
 `summary/` 文件名不得使用网页标题、raw 文件名或任意摘要标题。网页/PDF 标题只用于 `raw/` 文件命名。
 
@@ -34,9 +34,11 @@
 4. 英文通用名（尽量避免，如 Examplemab）
 
 示例：
-- ✅ 优先: `ABC123@Example_Cancer.md` 或 `exa-mab@Example_Cancer.md`
-- ✅ 可接受: `示例单抗@Example_Cancer.md`
-- ❌ 避免: `Examplemab@Example_Cancer.md`
+- ✅ 优先: `ABC123@Example_Cancer@ASCO2026.md` 或 `exa-mab@Example_Cancer@ASCO2026.md`
+- ✅ 可接受: `示例单抗@Example_Cancer@company_release_2025.md`
+- ❌ 避免: `Examplemab@Example_Cancer@source.md`
+
+`source_label` 是短的、人工可读的来源标签，默认使用来源简称和年份，例如 `ASCO2026`、`ESMO2026`、`NEJM2026` 或 `CompanyRelease2025`。同一 drug/indication 下同标签确有多个不同来源时，追加最短区分后缀，例如 `ASCO2026_2` 或 `ASCO2026_FinalAnalysis`。不强制把摘要编号、试验代码或完整标题放入文件名。
 
 **文件名清理规则**:
 - 替换空格为下划线
@@ -90,11 +92,16 @@
 | drug_aliases | 数组 | 别名、商品名 |
 | indication_id | 字符串 | 规范适应症ID（必填；用于 indication 索引文件名） |
 | indication | 字符串 | 适应症（必填） |
+| source_label | 字符串 | 来源快照短标签（必填；用于 summary 文件名，同一来源重提取时保持不变） |
+| source_type | 字符串 | 来源类型，仅允许 `journal`、`conference`、`company_release`、`regulatory`、`other` |
+| published_date | 日期或 null | 来源明确发布日期、会议日期或期刊在线发表日期；无法确认时为 `null`，不得使用提取日期代替 |
+| combination_regimen | 字符串 | 标准化联合用药方案；单药也必须明确写入 |
+| clinical_match_key | 字符串 | `drug_id|combination_regimen|indication_id|phase`，用于 drug 临床记录合并 |
 | companies | 数组 | 研发公司列表 |
 | phase | 字符串 | Phase I/II/III（必填） |
 | trial_name | 字符串 | 试验名称 |
 | conference | 字符串 | 学术会议或发布场合 |
-| created | 日期 | 数据来源日期 |
+| created | 日期 | summary 生成日期 |
 | verification | 字符串 | 必填；仅允许 `passed`，表示独立 data verifier 已完成且 FAIL=0 |
 | verification_fail_count | 整数 | 必填；必须为 `0` |
 #### 有效性和安全性数据
@@ -193,6 +200,11 @@ drug: {药品通用名}
 drug_aliases: [{别名1, 别名2}]
 indication_id: {规范适应症ID}
 indication: {适应症}
+source_label: {ASCO2026}
+source_type: {journal|conference|company_release}
+published_date: {YYYY-MM-DD 或 null}
+combination_regimen: {标准化联合用药方案}
+clinical_match_key: "{drug_id}|{combination_regimen}|{indication_id}|{phase}"
 companies: [{公司列表}]
 phase: {Phase}
 trial_name: {试验名称}
@@ -202,7 +214,7 @@ verification: passed
 verification_fail_count: 0
 ---
 
-# {drug_id}@{适应症}
+# {drug_id}@{indication_id}@{source_label}
 
 > 来源原文: [[raw/{原始文件名.md}]]
 

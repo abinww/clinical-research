@@ -16,7 +16,7 @@
 ```text
 ~/clinical/
 ├── raw/
-├── summary/      # 规范摘要（summary/{drug_id}/{drug_id}@{indication_id}.md）
+├── summary/      # 规范摘要快照（summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md）
 ├── drug/         # 药品索引（平铺：{drug_id}.md）
 ├── indication/   # 适应症索引（平铺：{indication_id}.md）
 ├── trials/

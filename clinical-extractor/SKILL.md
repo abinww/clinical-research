@@ -15,7 +15,7 @@ description: |
 
 - 必须按主步骤顺序执行,不得跳过（Step 1 → Step 2 → Step 3 → Step 4 → Step 5）。
 - `raw/` 是原始采集层,只保存工具提取结果,不允许大模型改写、总结、翻译、重排、删减或补全正文。
-- `summary/` 是结构化摘要层,按药品分子目录组织(`summary/{drug_id}/{drug_id}@{indication_id}.md`),必须先通过数据一致性审核,再写入正式文件。
+- `summary/` 是结构化摘要层,按药品分子目录组织(`summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md`),必须先通过数据一致性审核,再写入正式文件；后续来源不得覆盖已有快照。
 - 具体文件格式只以 `../schema/summary-spec.md` 和 `../schema/drug-spec.md` 为准;本 workflow 不重复定义格式细节。
 - 如果任一步失败,按该步骤的失败处理规则终止或回修,不得继续污染后续索引。
 
@@ -47,10 +47,16 @@ EXTRACTOR PREFLIGHT:
 同时准备以下信息:
 
 - 原始来源标识:URL 或 PDF 文件名。
-- 数据来源日期:优先使用资料发布日期,否则使用当前日期。
+- 来源发布日期:从原文提取明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `published_date: null`，不得用当前日期代替。
+- summary 生成日期:写入 `created`，使用实际生成日期。
 - raw 文件基础名:仅用于 `raw/` 文件命名。
 - `drug_id`: 按 `drug-spec.md` 的优先级确定，用于 summary/drug 文件路径。
 - `indication_id`: 按 `indication-spec.md` 的规范命名确定；治疗线无法判断时保留 `line: null`，不得猜测为 1L。
+- `source_label`: 根据来源类型和来源年份生成短标签，例如 `ASCO2026`；同一来源重提取时保持不变，同一标签冲突时追加最短后缀。
+- `source_type`: 标准化为 `journal`、`conference`、`company_release`、`regulatory` 或 `other`。
+- `published_date`: 只记录来源明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `null`，不得用提取日期代替。
+- `combination_regimen`: 标准化联合用药方案；单药也必须明确记录。
+- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成；临床试验代码只能作为参考字段。
 
 raw 文件基础名确定规则:
 
@@ -62,7 +68,7 @@ raw 文件基础名确定规则:
 
 - `raw_filename`: 使用 raw 文件基础名,保存工具原始提取结果。
 - `drug_id`: 按 `../schema/drug-spec.md` 的药品身份优先级生成，用于目录、文件名和索引定位。
-- `summary_filename`: 按 `../schema/summary-spec.md` 生成，格式必须为 `{drug_id}@{indication_id}.md`。
+- `summary_filename`: 按 `../schema/summary-spec.md` 生成，格式必须为 `{drug_id}@{indication_id}@{source_label}.md`。
 - `drug_filename`: 格式为 `{drug_id}.md`。
 
 ## Step 2: 去重检查
@@ -154,9 +160,12 @@ nano-pdf --file <pdf路径> --action read
 ```yaml
 ---
 source: {URL 或 PDF文件名}
+published_date: {YYYY-MM-DD 或 null}
 created: {YYYY-MM-DD}
 ---
 ```
+
+`created` 是 raw 实际提取日期，不是来源发布日期；`published_date` 只能填写原文明确提供的来源日期。summary 的 `source_label` 默认按来源简称和年份生成，例如 `ASCO2026`、`NEJM2026` 或 `CompanyRelease2025`。同一 drug/indication 下标签冲突时，仅追加最短必要后缀（如 `_2`），不得用提取日期替代来源标签。
 
 写入:
 
@@ -220,7 +229,7 @@ data verifier subagent 禁止:
 ```text
 SUMMARY WRITE GATE:
 - summary-spec.md read: yes
-- summary filename matches {drug_id}@{indication_id}.md: yes
+- summary filename matches {drug_id}@{indication_id}@{source_label}.md: yes
 - "> 来源原文:" wikilink points to current raw file: yes
 - verifier completed: yes
 - verifier FAIL count: 0
@@ -240,7 +249,7 @@ write path={summary_dir}/{drug_id}/{summary_filename} content={符合 summary-sp
 
 ## Step 5: 生成或更新 drug/
 
-目标:把本次通过审核的 summary 数据合并进药品索引。
+目标:把本次通过审核的 summary 数据合并进药品索引；同一临床的后续详版补充已有记录，不覆盖早期来源快照。
 
 ### 5.1 读取规范和配置
 
@@ -287,8 +296,11 @@ ls {drug_dir}/{drug_id}.md
 如果文件已存在:
 
 - 读取现有文件。
-- 只更新与本次 summary 相关的适应症、数据行、来源链接和时间线。
-- 如果同一 summary 已经存在于来源列表,避免重复追加。
+- 从现有临床数据记录的 `clinical_match_key` 读取匹配键。
+- 若匹配键与本次 summary 完全一致，将新 summary 的新增指标、分组、样本量和随访信息补充到同一临床记录，不新增重复记录。
+- 若同一字段出现不同数值，不静默覆盖；并列保留两个值，分别标注来源和“数据差异待人工确认”。
+- 若匹配键不同，作为独立临床记录追加。
+- 无论是否合并，都追加本次 summary 来源链接；早期来源链接不得删除。
 - 更新 frontmatter 的 `updated` 日期。
 - 保留与本次任务无关的手动补充内容。
 

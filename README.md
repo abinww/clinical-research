@@ -97,7 +97,7 @@ python -m pip install -r clinical-research/drug-trials-search/requirements.txt
 ```text
 ~/clinical/
 ├── raw/          # 原始资料（带 YAML frontmatter）
-├── summary/      # 结构化摘要（summary/{drug_id}/{drug_id}@{indication_id}.md）
+├── summary/      # 结构化摘要快照（summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md）
 ├── drug/         # 药品索引（平铺：{drug_id}.md）
 ├── indication/   # 适应症索引（平铺：{indication_id}.md）
 ├── trials/       # 临床试验查询结果

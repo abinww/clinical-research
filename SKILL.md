@@ -46,7 +46,7 @@ PREFLIGHT:
 ```
 ~/clinical/
 ├── raw/          # 原始资料（带YAML frontmatter）
-├── summary/      # 规范摘要（summary/{drug_id}/{drug_id}@{indication_id}.md）
+├── summary/      # 规范摘要（summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md）
 ├── drug/         # 药品索引（平铺：{drug_id}.md）
 ├── indication/   # 适应症索引（平铺：{indication_id}.md）
 ├── trials/       # 临床试验查询结果
@@ -87,4 +87,4 @@ PREFLIGHT:
 ✅ **正确**：严格添加 `source:` 和 `created:` 到raw/文件
 
 ❌ **错误**：summary/文件命名随意  
-✅ **正确**：使用 `{drug_id}@{indication_id}.md` 格式
+✅ **正确**：使用 `{drug_id}@{indication_id}@{source_label}.md` 格式

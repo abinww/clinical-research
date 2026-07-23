@@ -10,7 +10,7 @@
 
 `## 当前临床管线` 是唯一例外：其 `### clinicaltrials.gov` 子表允许由 ClinicalTrials.gov 官方 API 直接更新；`### chinadrugtrials.org.cn` 子表仅允许由其官方注册库数据直接更新。注册信息必须保留官方试验链接和子表更新时间，不得用于补充上方的临床疗效或安全性章节。
 
-`summary/` 目录按药品分子目录组织：`summary/{drug_id}/{drug_id}@{indication_id}.md`。
+`summary/` 目录按药品分子目录组织：`summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md`。每个来源快照都必须保留，后续来源不得覆盖早期 summary。
 
 如果关联 `summary/` 文件缺失、未完成数据一致性审核，或审核结果存在 `FAIL`，必须停止更新依赖 summary 的临床数据和关键里程碑章节。此限制不适用于创建基本信息或独立的官方注册管线子表。
 
@@ -97,7 +97,7 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 ### 2. 临床数据汇总
 
-按适应症分组，每个适应症一个章节。
+按适应症分组，每个适应症一个章节；同一 `clinical_match_key` 的多个来源快照合并到同一临床记录，不重复新增临床记录。
 
 #### 表格模板
 
@@ -110,6 +110,14 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 | 2025-06 | ASCO | 对照组 | 50 | 18.0% | 60.0% | 5.2mo | 55.0% | — |
 | 2024-12 | ESMO Asia | 6mg/kg | 37 | 56.2% | 89.0% | — | — | 剂量探索 |
 ```
+
+每个同临床记录前必须保留其匹配标识：
+
+```markdown
+<!-- clinical_match_key: {drug_id}|{combination_regimen}|{indication_id}|{phase} -->
+```
+
+后续 summary 若匹配同一 `clinical_match_key`，只补充新增数据和来源；数值冲突不得静默覆盖，必须并列保留并标注来源差异。
 
 > 来源: [[summary/{drug_id}/{文件名1}.md]] | [[summary/{drug_id}/{文件名2}.md]]
 ```
@@ -267,7 +275,7 @@ updated: 2025-05-31
 | 2026-05 | ASCO | ABC123 | 200 | 55.0% | 88.5% | 11.14mo | 21.0% | HR 0.60, P<0.001 |
 | 2026-05 | ASCO | Standard Therapy | 199 | 38.5% | 77.0% | 6.90mo | 18.5% | 对照组 |
 
-> 来源: [[summary/ABC123/ABC123@Example_Cancer_1L.md]]
+> 来源: [[summary/ABC123/ABC123@Example_Cancer_1L@ASCO2026.md]]
 
 ### 示例肿瘤后线 (Example Cancer Later-line)
 
@@ -275,7 +283,7 @@ updated: 2025-05-31
 |------|------|------|:-:|:---:|:---:|:----:|:-------:|------|
 | 2025-06 | ASCO | Biomarker-A阳性 | 33 | 45.5% | 84.8% | — | 24.2% | 首次数据 |
 
-> 来源: [[summary/ABC123/ABC123@Example_Cancer_Later-line_ASCO2025.md]]
+> 来源: [[summary/ABC123/ABC123@Example_Cancer_Later-line@ASCO2025.md]]
 
 ## 关键里程碑
 
