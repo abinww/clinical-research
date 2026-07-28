@@ -103,16 +103,26 @@ summary/{drug_id}/{文件名}.md
 
 ## Step 3: 计算 drug 归档缺口
 
-扫描 `drug_dir` 根目录下所有药品索引文件，提取所有来源链接：
+递归扫描 `drug_dir` 下所有药品索引文件（包括子文件夹），按 frontmatter `drug_id` 建立映射：
+
+```bash
+find ${drug_dir} -name "*.md" -type f
+```
+
+```text
+drug_id -> drug 文件路径
+```
+
+提取所有来源链接：
 
 ```text
 > 来源: [[summary/{drug_id}/{文件}.md]]
 ```
 
-对每个合格 summary，按 `drug_id` 计算期望目标：
+对每个合格 summary，按 `drug_id` 在映射中查找期望目标：
 
 ```text
-expected_drug_page = drug/{drug_id}.md
+expected_drug_page = 映射中 drug_id 对应的文件路径
 ```
 
 仅检查该期望 drug 页面中的 `> 来源:` 行是否包含该 summary 路径：
@@ -154,7 +164,7 @@ missing_from_indication = summaries whose path is absent from expected_indicatio
 否则：
 
 1. 按 summary 的 `drug_id` 字段分组。
-2. 使用 `drug/{drug_id}.md` 作为唯一目标文件。
+2. 使用 Step 3 映射中 `drug_id` 对应的文件路径作为唯一目标文件；映射中不存在时按 `drug-spec.md` 创建新文件。
 3. 文件不存在时，按 `drug-spec.md` 创建完整药品索引。
 4. 文件存在时，按 `clinical_match_key` 合并本轮 summary：匹配时补充新增指标、分组、样本量和随访，不新增重复临床记录；不匹配时追加独立记录。
 5. 保留已有内容和人工补充。

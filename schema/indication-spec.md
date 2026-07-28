@@ -62,8 +62,8 @@ updated: {YYYY-MM-DD}        # 最后更新日期
 
 | 药品 | 公司 | 阶段 | ORR | mPFS | mOS | 安全性要点 | 最新进展 |
 |------|------|------|-----|------|-----|-----------|---------|
-| [{drug_id_A}](../drug/{drug_id_A}.md) | 公司A | Phase III | 41.4% | 11.3mo | 22.1mo | 3级AE 25% | ASCO 2026 |
-| [{drug_id_B}](../drug/{drug_id_B}.md) | 公司B | Phase II | 35.2% | 8.5mo | — | 3级AE 18% | ESMO 2025 |
+| [[{drug_id_A}]] | 公司A | Phase III | 41.4% | 11.3mo | 22.1mo | 3级AE 25% | ASCO 2026 |
+| [[{drug_id_B}]] | 公司B | Phase II | 35.2% | 8.5mo | — | 3级AE 18% | ESMO 2025 |
 
 > 来源: [[summary/{drug_id_1}/{文件1}.md]] | [[summary/{drug_id_2}/{文件2}.md]]
 ```
@@ -153,7 +153,7 @@ updated: 2025-05-31
 
 | 药品 | 公司 | 阶段 | ORR | mPFS | mOS | 安全性要点 | 最新进展 |
 |------|------|------|-----|------|-----|-----------|---------|
-| [ABC123](../drug/ABC123.md) | BigPharma | Phase III | 75.6% | 11.14mo | — | ≥3级TRAE 66.9% | ASCO 2026 |
+| [[ABC123]] | BigPharma | Phase III | 75.6% | 11.14mo | — | ≥3级TRAE 66.9% | ASCO 2026 |
 | [ABC456](../drug/ABC456.md) | GlobalPharma | Phase III | 66.5% | 6.90mo | — | ≥3级TRAE 62.3% | EXAMPLE-407 |
 
 > 来源: [[summary/ABC123/ABC123@Example_Cancer_1L@ASCO2026.md]] | [[summary/ABC456/ABC456@Example_Cancer_1L@EXAMPLE407.md]]
