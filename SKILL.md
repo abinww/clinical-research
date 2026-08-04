@@ -68,6 +68,7 @@ PREFLIGHT:
 | "更新药品索引" / "更新适应症索引" | clinical-indexer | 增量扫描 summary，分别补齐 drug/ 与 indication/ |
 | "查询药品临床试验" / "搜索临床试验" | drug-trials-search | Python脚本查询 CTG |
 | 药品名称 + "临床试验" | drug-trials-search | 生成表格，列出所有结果 |
+| "搜索已公布的临床数据" / "查找临床数据来源" | data-search | 搜索期刊/会议/公告，输出 plan 表 |
 | "评价临床数据" / "评估临床试验" / "怎么看这个数据" | clinical-trial-evaluator | 提供系统化的试验数据评价框架 |
 | 无明确指令 | — | 要求用户说明要提取、归档、查询还是评价；不得默认写入索引 |
 

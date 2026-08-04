@@ -1,0 +1,207 @@
+---
+name: data-search
+description: |
+  搜索已公布的临床数据来源。当用户提到以下关键词时触发：
+  - "搜索已公布的临床数据"
+  - "查找临床数据来源"
+  - 药品名称 + "建库"流程中由编排调用
+---
+
+# 临床数据来源搜索
+
+> 本文件由 clinical-research/SKILL.md 路由后读取执行。
+> 职责：搜索某创新药已公布的临床数据来源，输出一个 plan 表，供 `clinical-extractor` 后续逐个提取。
+> 本 skill 不提取数据、不写入 `raw/`/`summary/`/`drug/`/`indication/`，只产出候选 URL 清单；plan 表直接返回，不保存文件。
+
+## 执行约束
+
+- ✅ 搜索已公布的临床疗效/安全性数据来源（期刊、会议、公司公告、注册库）
+- ✅ 输出 plan 表，直接返回给用户或下一步调用
+- ✅ 搜不到药物代号时停下询问用户，不猜测
+- ❌ 不提取临床数据（由 `clinical-extractor` 负责）
+- ❌ 不写入 `raw/`、`summary/`、`drug/`、`indication/`
+- ❌ 不调用 `clinical-extractor`
+- ❌ 不评价临床数据质量
+- ❌ 不用二手媒体数字作为数据源
+
+## 固化规则
+
+1. **别名全集先于一切搜索**（漏别名 = 漏数据）
+2. **来源分级**：CTG / 会议摘要 / 期刊 / 公司公告 = 原始；媒体 = 只做线索
+3. **多版本管理**：同一试验按数据截止日排序，不同 cutoff 都保留
+4. **搜不到就停**：Step 1 验证失败 → 返回确认，不猜测
+5. **内容质量优先于来源等级**：付费墙期刊不如可获取的会议摘要
+6. **无 NCT 来源纳入**，填 `—`
+7. **每个数字必须能溯源到原始来源**，二手媒体数字不直接用
+
+## Step 1: 药物身份锚定
+
+> ⚠️ 搜不到代号就停下问用户，不猜测，不进入后续步骤。
+
+1. 搜索 `{代号} + 公司名`、`{代号} + clinical trial`
+2. 查公司官网管线页
+3. 收集**别名全集**：研发代号、合作方代号、通用名、商品名
+4. 识别：靶点、分子类型（ADC/双抗/单抗/小分子）、研发公司、合作方
+
+示例：Enhertu（DS-8201）的别名全集可能是：
+
+```text
+研发代号: DS-8201
+合作方代号: T-DXd
+通用名: trastuzumab deruxtecan（德曲妥珠单抗）
+商品名: Enhertu（优赫得）
+```
+
+内部记录（不单独保存文件）：
+
+```text
+drug_id: {按 drug-spec.md 优先级确定}
+drug: {通用名}
+target: {最简形式}
+aliases: {别名全集}
+companies: {研发公司及合作方}
+molecule_type: {ADC/双抗/单抗/小分子}
+```
+
+如果无法确认药物身份（代号搜不到、别名无法收集），停下返回：
+
+```text
+无法确认药物身份：{代号}
+请确认：是否指 {候选1} 或其他药物？
+```
+
+确认后才继续。
+
+## Step 2: 官方临床试验注册库
+
+1. 复用 `drug-trials-search` 脚本查 ClinicalTrials.gov：
+
+```bash
+python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{药品名称或别名}" --format json
+```
+
+2. 从 JSON 结果中提取 NCT 编号、阶段、适应症、状态清单，作为后续搜索的索引骨架。
+3. chinadrugtrials.org.cn：当前未实现，跳过并记录 "CDT 未查询"。
+
+## Step 3: 公司官方渠道
+
+1. 官网 IR 管线页、新闻中心、业绩报告、PPT
+2. 上市公司公告（港交所披露易 / 巨潮）
+3. **合作方公告也要搜**（如阿斯利康公布 DS-8201/Enhertu 的数据）
+4. 搜索：`{公司名} {drug} phase OR results press release`
+5. 对每个候选 URL，用 `web_fetch` 快速判断是否包含临床数据。
+
+## Step 4: 学术会议
+
+1. 逐个会议搜：ASCO / ESMO / ESMO Asia / WCLC / SABCS / ASH / AACR / CSCO
+2. 搜索词：`{代号} {会议名}`（不带年份，以列出该会议所有包含该代号的内容）
+3. 查会议摘要库原文：
+   - ASCO / JCO：ascopubs.org
+   - ESMO：oncologypro.esmo.org、annalsofoncology.org
+   - WCLC：iaslc.org
+   - ASH：ashpublications.org
+   - AACR：aacrjournals.org
+4. 记录：摘要号、数据截止日期
+5. 对每个候选 URL，用 `web_fetch` 快速判断是否包含临床数据。
+
+## Step 5: 期刊
+
+1. PubMed 检索：`{drug}` 或 `{drug} {indication}`
+
+```bash
+搜索 site:pubmed.ncbi.nlm.nih.gov {drug}
+```
+
+2. 定向 site search：`{drug} site:nejm.org OR site:thelancet.com OR site:jco.org OR site:nature.com`
+3. 对每个候选 URL，用 `web_fetch` 快速判断是否包含临床数据。
+
+## Step 6: 行业媒体线索
+
+1. 来源：医药魔方、Insight、药融云、Endpoints、Fierce Biotech
+2. **只用于发现线索**：哪个会议将公布、哪个数据刚发布
+3. 发现线索后回到 Step 3/4/5 查原始来源
+4. 二手媒体的数字一律不直接用，不作为 plan 表来源
+5. 媒体 URL 不进入 plan 表
+
+## Step 7: 内容判断与去重
+
+对每个候选 URL：
+
+- 用 `web_fetch` 快速判断是否确实包含临床疗效或安全性数据（ORR/PFS/OS/AE 等）
+- 排除：二手转述、百科、聚合数据库页、不含疗效/安全性数据的纯新闻
+- 排除：无法获取内容的页面（付费墙且无摘要、反爬、空页面）
+
+对同一 NCT 或同一临床试验代码的多个来源：
+
+- 可靠性层级：期刊全文 > 会议摘要 > 公司公告 > 新闻稿
+- **以实际内容质量为准**：
+  - 期刊付费墙/无摘要 → 降级，改用可获取的会议摘要
+  - 会议只有基本信息，公司公告有更详细数据 → 保留公司公告
+  - 两来源覆盖度相当 → 选可靠性更高的
+- 只保留一个最优来源，静默丢弃其余
+- **同一试验不同数据截止日**（早期简版 vs 后期详版）都保留
+
+对于无 NCT 也无试验代号的来源：
+
+- 纳入 plan 表
+- "临床代码或NCT编号"列填 `—`
+- 只要内容确实包含临床数据
+
+## Step 8: 输出 plan 表
+
+```markdown
+# {drug_id} 临床数据来源 plan
+
+> 生成时间: {YYYY-MM-DD}
+> 药品身份: {drug_id} | {drug} | target: {target} | 公司: {companies}
+> 别名全集: {别名列表}
+> 搜索范围: {使用的搜索词}
+
+| # | 临床代码或NCT编号 | 适应症 | 临床阶段 | 来源类型 | 数据截止日 | 网址链接 | 备注 |
+|---|------------------|--------|---------|---------|-----------|---------|------|
+| 1 | NCT04521625 | NSCLC 1L | Phase III | journal | 2025-06-01 | https://... | NEJM 全文 |
+| 2 | EXAMPLE-101 | NSCLC 后线 | Phase II | conference | 2024-12-01 | https://... | ASCO2025 摘要 |
+| 3 | — | 实体瘤 | Phase I | company_release | — | https://... | 首次人体数据 |
+```
+
+列说明：
+
+| 列 | 说明 |
+|---|---|
+| # | 序号 |
+| 临床代码或NCT编号 | NCT 编号或公司试验代号；无则填 `—` |
+| 适应症 | 精确适应症，含治疗线 |
+| 临床阶段 | Phase I / II / III / IV |
+| 来源类型 | `journal`、`conference`、`company_release`、`regulatory`、`other` |
+| 数据截止日 | 数据截止日（cutoff），用于区分同一试验的不同披露版本；来源未给出则填 `—` |
+| 网址链接 | 原始来源 URL |
+| 备注 | 来源特点说明，如"NEJM 全文"、"ASCO2025 摘要"、"首次人体数据" |
+
+## Step 9: 输出报告
+
+plan 表不保存到文件，直接返回给用户或下一步（`clinical-extractor` 调用）使用。
+
+```text
+data-search 完成：
+- 药品: {drug_id} ({drug})
+- 别名全集: {列表}
+- 搜索候选: N 个
+- 含临床数据: M 个
+- 去重后保留: K 个
+- plan 表: （直接返回）
+- 下一步: 用户确认 plan 表后，逐个调用 clinical-extractor 提取
+```
+
+## 常见问题
+
+### Q: 药物代号搜不到任何信息？
+
+按 Step 1 规则停下，返回用户确认，不猜测。
+
+### Q: 同一试验有期刊全文和会议摘要，选哪个？
+
+以实际内容质量为准：期刊可获取全文 → 选期刊；期刊付费墙且会议摘要可获取 → 选会议摘要；两来源覆盖度相当 → 选可靠性更高的。不同数据截止日的版本都保留。
+
+### Q: 媒体报道了数据，可以进 plan 表吗？
+
+不可以。媒体只用于发现线索，必须回到原始来源（期刊/会议/公司公告/注册库）核实。媒体 URL 不进 plan 表。

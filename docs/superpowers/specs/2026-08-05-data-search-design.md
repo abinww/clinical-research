@@ -18,7 +18,7 @@
 
 ## 输出
 
-一个 plan 表，保存到 `{trials_dir}/search_plan_{drug_id}_{date}.md`。
+一个 plan 表，直接返回给用户或下一步（`clinical-extractor`）调用，不保存到文件。
 
 plan 表格式：
 
@@ -46,7 +46,7 @@ plan 表格式：
 | 适应症 | 精确适应症，含治疗线 |
 | 临床阶段 | Phase I / II / III / IV |
 | 来源类型 | `journal`、`conference`、`company_release`、`regulatory`、`other` |
-| 数据截止日 | 来源明确给出的数据截止日；无则 `—` |
+| 数据截止日 | 数据截止日（cutoff），用于区分同一试验的不同披露版本；来源未给出则填 `—` |
 | 网址链接 | 原始来源 URL |
 | 备注 | 来源特点说明，如"NEJM 全文"、"ASCO2025 摘要"、"首次人体数据" |
 
@@ -85,14 +85,14 @@ molecule_type: {ADC/双抗/单抗/小分子}
 
 1. 官网 IR 管线页、新闻中心、业绩报告、PPT
 2. 上市公司公告（港交所披露易 / 巨潮）
-3. **合作方公告也要搜**（如默沙东公布 MK-2870 数据）
+3. **合作方公告也要搜**（如阿斯利康公布 DS-8201/Enhertu 的数据）
 4. 搜索：`{公司名} {drug} phase OR results press release`
-5. 对每个候选 URL，用 `webfetch` 快速判断是否包含临床数据
+5. 对每个候选 URL，用 `web_fetch` 快速判断是否包含临床数据
 
 ### Step 4: 学术会议
 
 1. 逐个会议搜：ASCO / ESMO / ESMO Asia / WCLC / SABCS / ASH / AACR / CSCO
-2. 搜索词：`{代号} {会议名} {年份}`（搜近 3 年）
+2. 搜索词：`{代号} {会议名}`（不带年份，以列出该会议所有包含该代号的内容）
 3. 查会议摘要库原文：
    - ASCO / JCO：ascopubs.org
    - ESMO：oncologypro.esmo.org、annalsofoncology.org
@@ -100,14 +100,14 @@ molecule_type: {ADC/双抗/单抗/小分子}
    - ASH：ashpublications.org
    - AACR：aacrjournals.org
 4. 记录：摘要号、数据截止日期
-5. 对每个候选 URL，用 `webfetch` 快速判断是否包含临床数据
+5. 对每个候选 URL，用 `web_fetch` 快速判断是否包含临床数据
 
 ### Step 5: 期刊
 
 1. PubMed 检索：`{drug}` 或 `{drug} {indication}`
    - 通过 web_search 搜索 `site:pubmed.ncbi.nlm.nih.gov {drug}`
 2. 定向 site search：`{drug} site:nejm.org OR site:thelancet.com OR site:jco.org OR site:nature.com`
-3. 对每个候选 URL，用 `webfetch` 快速判断是否包含临床数据
+3. 对每个候选 URL，用 `web_fetch` 快速判断是否包含临床数据
 
 ### Step 6: 行业媒体线索
 
@@ -121,7 +121,7 @@ molecule_type: {ADC/双抗/单抗/小分子}
 
 对每个候选 URL：
 
-- 用 `webfetch` 快速判断是否确实包含临床疗效或安全性数据（ORR/PFS/OS/AE 等）
+- 用 `web_fetch` 快速判断是否确实包含临床疗效或安全性数据（ORR/PFS/OS/AE 等）
 - 排除：二手转述、百科、聚合数据库页、不含疗效/安全性数据的纯新闻
 - 排除：无法获取内容的页面（付费墙且无摘要、反爬、空页面）
 
@@ -145,13 +145,9 @@ molecule_type: {ADC/双抗/单抗/小分子}
 
 按上方"输出"章节的格式生成 plan 表。
 
-### Step 9: 保存 plan 表
+### Step 9: 输出报告
 
-```text
-{trials_dir}/search_plan_{drug_id}_{date}.md
-```
-
-### Step 10: 输出报告
+plan 表不保存到文件，直接返回给用户或下一步（`clinical-extractor`）调用使用。
 
 ```text
 data-search 完成：
@@ -160,7 +156,7 @@ data-search 完成：
 - 搜索候选: N 个
 - 含临床数据: M 个
 - 去重后保留: K 个
-- plan 表: {trials_dir}/search_plan_{drug_id}_{date}.md
+- plan 表: （直接返回）
 - 下一步: 用户确认 plan 表后，逐个调用 clinical-extractor 提取
 ```
 
@@ -200,7 +196,7 @@ data-search/
 └── SKILL.md          # 触发词 + 10 步 workflow
 ```
 
-不新增脚本：复用 `drug-trials-search/search_trials.py` 的 JSON 输出和 `web_search` / `webfetch` 工具。
+不新增脚本：复用 `drug-trials-search/search_trials.py` 的 JSON 输出和 `web_search` / `web_fetch` 工具。
 
 ## 与现有 skill 的边界
 

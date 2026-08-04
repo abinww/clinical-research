@@ -21,6 +21,7 @@
 | `batch-extractor/` | 批量处理 raw 目录下尚未整理的临床资料。 |
 | `clinical-indexer/` | 定时或手动扫描全部 summary，分别查漏补缺 drug/ 和 indication/ 索引。 |
 | `drug-trials-search/` | 查询临床试验注册信息，并写入药品管线表。 |
+| `data-search/` | 搜索已公布的临床数据来源，输出 plan 表供提取。 |
 | `clinical-trial-evaluator/` | 按结构化框架评价临床试验数据。 |
 | `schema/` | 临床摘要、药品索引、适应症索引的 Markdown 格式规范。 |
 
