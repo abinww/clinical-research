@@ -22,6 +22,8 @@
 | `clinical-indexer/` | 定时或手动扫描全部 summary，分别查漏补缺 drug/ 和 indication/ 索引。 |
 | `drug-trials-search/` | 查询临床试验注册信息，并写入药品管线表。 |
 | `data-search/` | 搜索已公布的临床数据来源，输出 plan 表供提取。 |
+| `data-verify/` | 验证 summary 数据来源，把审核章节写入 summary。 |
+| `drug-build/` | 编排建库：管线查询、数据搜索、批量提取、验证与索引。 |
 | `clinical-trial-evaluator/` | 按结构化框架评价临床试验数据。 |
 | `schema/` | 临床摘要、药品索引、适应症索引的 Markdown 格式规范。 |
 

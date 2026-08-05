@@ -69,6 +69,8 @@ PREFLIGHT:
 | "查询药品临床试验" / "搜索临床试验" | drug-trials-search | Python脚本查询 CTG |
 | 药品名称 + "临床试验" | drug-trials-search | 生成表格，列出所有结果 |
 | "搜索已公布的临床数据" / "查找临床数据来源" | data-search | 搜索期刊/会议/公告，输出 plan 表 |
+| "验证这个summary" / "审核summary" / "检查summary数据" | data-verify | 核对 summary 数据来源并写入审核章节 |
+| "对{药品}建库" / "建库" | drug-build | 编排管线+搜索+提取+验证+索引，完整建库 |
 | "评价临床数据" / "评估临床试验" / "怎么看这个数据" | clinical-trial-evaluator | 提供系统化的试验数据评价框架 |
 | 无明确指令 | — | 要求用户说明要提取、归档、查询还是评价；不得默认写入索引 |
 
