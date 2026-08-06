@@ -96,9 +96,9 @@
 | source_type | 字符串 | 来源类型，仅允许 `journal`、`conference`、`company_release`、`regulatory`、`other` |
 | published_date | 日期或 null | 来源明确发布日期、会议日期或期刊在线发表日期；无法确认时为 `null`，不得使用提取日期代替 |
 | combination_regimen | 字符串 | 标准化联合用药方案；单药也必须明确写入 |
-| clinical_match_key | 字符串 | `drug_id|combination_regimen|indication_id|phase`，用于 drug 临床记录合并 |
+| clinical_match_key | 字符串 | `drug_id|combination_regimen|indication_id|phase`，用于 drug 临床记录合并；phase 缺失时 key 不完整，indexer 降级为独立追加记录（不合并） |
 | companies | 数组 | 研发公司列表 |
-| phase | 字符串 | Phase I/II/III（必填） |
+| phase | 字符串 | Phase I/II/III/IV；无法确定时写 `null` 并备注"待确认"，不得猜测 |
 | trial_name | 字符串 | 试验名称 |
 | conference | 字符串 | 学术会议或发布场合 |
 | created | 日期 | summary 生成日期 |

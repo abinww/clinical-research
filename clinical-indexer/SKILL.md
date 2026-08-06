@@ -102,7 +102,7 @@ summary/{drug_id}/{文件名}.md
 说明：
 
 - `verification: passed` 已隐含审核章节存在与 FAIL=0（data-verify 仅在两者满足时写入 passed），不再单独检查。
-- `clinical_match_key` 缺失时，drug 页按"独立追加记录"降级处理（不执行合并），不阻塞归档。
+- `clinical_match_key` 缺失**或不完整**（含空段，如 phase 段为空）时，drug 页按"独立追加记录"降级处理（不执行合并），不阻塞归档。
 - 其他身份字段（source_label 等）从文件名或正文读取，不参与资格检查。
 
 ## Step 3: 计算 drug 归档缺口

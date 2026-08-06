@@ -39,7 +39,8 @@
 - `source_type`: 标准化为 `journal`、`conference`、`company_release`、`regulatory` 或 `other`。
 - `published_date`: 只记录来源明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `null`，不得用提取日期代替。
 - `combination_regimen`: 标准化联合用药方案；单药也必须明确记录。
-- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成；临床试验代码只能作为参考字段。
+- `phase`: 从原文识别临床阶段（Phase I/II/III/IV）；无法确定时写 `null` 并备注"待确认"，不得猜测。
+- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成；phase 无法确定时该段留空（如 `ABC123|化疗|NSCLC_1L|`），indexer 按不完整 key 降级为独立追加记录；临床试验代码只能作为参考字段。
 - `target`: 必填，使用最简形式（如 `PD-1`、`HER3/EGFR`），不带括号别名或机制注释；多靶点用 `/` 连接。
 
 ## Step 2: 生成并写入 raw/
