@@ -17,9 +17,10 @@ description: |
 ## 执行约束
 
 - ✅ 输入：一个 summary 文件 + 其对应的 raw 文件
+- ✅ 支持批量派发：由一个 verifier 子 agent 负责多个 summary 时，对每个 summary **独立执行**全部步骤（定位文件 → 逐项核对 → 写入审核结果）
 - ✅ 从 summary 的 `> 来源原文: [[raw/{文件}.md]]` 定位 raw 文件
 - ✅ 按 `schema/summary-spec.md` 的"数据一致性审核"规则逐项核对
-- ✅ 只修改 summary 末尾的 `## 数据一致性审核` 章节和 YAML 的 `verification` / `verification_fail_count` 字段
+- ✅ 只修改 summary 末尾的 `## 数据一致性审核` 章节和 YAML 的 `verification` / `verification_fail_count` 字段（需要该 summary 文件的写权限）
 - ❌ 不修改 summary 正文（核心数据、图片、试验设计、专家点评等章节）
 - ❌ 不联网
 - ❌ 不补充新数据

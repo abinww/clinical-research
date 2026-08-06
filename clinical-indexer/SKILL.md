@@ -94,12 +94,16 @@ summary/{drug_id}/{文件名}.md
 
 只接受同时满足下列条件的 summary：
 
-- `drug_id`、`drug`、`indication_id`、`indication`、`source_label`、`source_type`、`published_date`、`combination_regimen`、`clinical_match_key` 存在
+- `drug_id`、`indication_id` 存在
 - `verification: passed`
-- `verification_fail_count: 0`
-- 存在 `## 数据一致性审核` 章节
 
 不满足任一条件时记录跳过原因，不纳入 drug 或 indication 的本轮更新；不要修改该 summary。
+
+说明：
+
+- `verification: passed` 已隐含审核章节存在与 FAIL=0（data-verify 仅在两者满足时写入 passed），不再单独检查。
+- `clinical_match_key` 缺失时，drug 页按"独立追加记录"降级处理（不执行合并），不阻塞归档。
+- 其他身份字段（source_label 等）从文件名或正文读取，不参与资格检查。
 
 ## Step 3: 计算 drug 归档缺口
 

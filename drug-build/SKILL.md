@@ -14,7 +14,7 @@ description: |
 
 ## 执行约束
 
-- ✅ 按固定顺序编排各子 skill：身份锚定 → 管线 → plan 表 → 批量提取（含验证与索引）→ 检查完成情况
+- ✅ 按固定顺序编排各子 skill：身份锚定 → 管线 → plan 表 → 检查进度 → 批量提取（含验证与索引）→ 复查完成情况
 - ❌ 不重复实现各子 skill 的内部逻辑，只读取并执行对应 SKILL.md 的 workflow
 - ❌ 跳过任意步骤（除非用户明确要求）
 - ✅ 静默执行：除非遇到问题（身份无法确认、plan 表为空等），不向用户展示中间结果或要求确认
@@ -22,8 +22,8 @@ description: |
 ## 固化规则
 
 1. **多链接处理全部委托 clinical-extractor**：待处理 URL 一次性传入 extractor，由其内部完成并行提取、data-verify 验证、indexer 归档。
-2. **完成情况检查**：Step 6 在 extractor 执行后检查 plan 表每行是否已生成并验证通过的 summary，未完成行重新传给 extractor，全部完成后删除 plan 表。
-3. **静默执行**：Step 4 保存 plan 表后直接继续，不要求用户确认；仅在有问题时停下询问。
+2. **完成判断以脚本为准**：`check_plan_progress.py` 按"plan 表 URL → raw source 匹配 → summary 引用 → verification"三级判断每个 URL 状态，不猜文件名。
+3. **静默执行**：重复来源由 extractor 静默跳过（不询问）；"已提取未生成summary" / "未审核"行不重跑，记入失败项报告人工处理；仅在身份无法确认、plan 表为空时停下询问。
 4. **搜不到药物身份就停**：沿用 data-search Step 1 规则，不猜测。
 
 ## Step 1: 药物身份锚定
@@ -56,28 +56,48 @@ description: |
 
 静默执行，不向用户展示 plan 表，除非有问题才停下询问（如 plan 表为空、身份无法确认）。保存后直接进入 Step 5。
 
-## Step 5: 调用 clinical-extractor 批量提取
+## Step 5: 检查 plan 表进度并批量提取
 
-读取 `../clinical-extractor/SKILL.md`，把 plan 表中的全部 URL 作为多链接输入一次性传入，按其中 workflow 完整执行：
+### 5.1 运行进度检查脚本
+
+```bash
+python3 {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --plan drug/temp/search_plan_{drug_id}_{date}.md
+```
+
+脚本输出每个 URL 的状态：
+
+```text
+plan 表进度：
+- {url}: 已完成 / 未提取 / 已提取未生成summary / 未审核
+
+待处理 URL（传给 clinical-extractor）：
+- {未提取 的 URL 列表}
+
+失败项（报告人工处理）：
+- {已提取未生成summary / 未审核 的 URL 列表}
+```
+
+### 5.2 调用 clinical-extractor 提取待处理 URL
+
+读取 `../clinical-extractor/SKILL.md`，把脚本输出的**待处理 URL**（未提取）作为多链接输入一次性传入，按其中 workflow 完整执行：
 
 - 多链接的并行提取、data-verify 验证、indexer 归档都由 clinical-extractor 内部处理，本 skill 不重复实现
 - clinical-extractor 完成：每个 URL 的 raw/ + summary/，全部 summary 经 data-verify 验证（含 FAIL 回修），并调用 clinical-indexer 归档
 - 收集 clinical-extractor 的返回结果（提取数、验证汇总、归档结果、失败项）
 
-## Step 6: 检查完成情况
+## Step 6: 复查完成情况
 
-对 plan 表每一行，检查对应的 summary 是否已生成且验证通过：
+再次运行 Step 5.1 的进度检查脚本，确认 plan 表剩余行状态：
 
 ```text
-- 每行的 summary 路径为 summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md
-- 若该 summary 已存在且 verification: passed → 该行已完成
-- 若该 summary 不存在或未验证通过 → 该行未完成
+- "未提取" → 重新传给 clinical-extractor 再次提取
+- "已提取未生成summary" / "未审核" → 不重跑，记入最终报告的失败项，留待用户人工处理
+- "已完成" → 该行完成
 ```
 
-处理结果：
-
-- **存在未完成行**：把未完成行的 URL 重新传给 clinical-extractor（按 Step 5 重复执行），完成后再次检查；仍未完成的记入最终报告的失败项。
-- **全部行已完成**：删除 plan 表文件（`drug/temp/search_plan_{drug_id}_{date}.md`），进入 Step 7 输出报告。
+- 全部行"已完成"：删除 plan 表文件（`drug/temp/search_plan_{drug_id}_{date}.md`），进入 Step 7 输出报告。
+- 仍有"未提取"行：重复执行 Step 5.2 提取，再复查。
+- 存在"已提取未生成summary" / "未审核"行：不重跑（extractor 静默模式对重复来源一律跳过），记入失败项，进入 Step 7。
 
 ## Step 7: 输出报告
 
@@ -106,4 +126,8 @@ drug-build 完成：
 
 ### Q: 某行反复 FAIL 怎么办？
 
-clinical-extractor 内部处理：修正 2 次仍 FAIL 后，报告该行失败并留给用户人工处理，继续处理其他行；drug-build 的 Step 6 会把该行记入失败项，最终报告列出。
+clinical-extractor 内部处理：修正 2 次仍 FAIL 后，报告该行失败并留给用户人工处理，继续处理其他行；drug-build 的 Step 6 复查脚本会把"已提取未生成summary" / "未审核"行记入失败项，不重跑（extractor 静默模式对重复来源一律跳过），最终报告列出。
+
+### Q: 重复来源在静默模式下如何处理？
+
+extractor 多来源静默模式下，重复来源一律跳过，不询问、不重新提取。drug-build 的重跑只覆盖"未提取"行；需要修复已提取但未审核的 summary 时，由用户人工处理。

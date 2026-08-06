@@ -70,14 +70,16 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 ### 1.3 重复来源处理
 
-向用户报告并询问一次（合并所有重复来源的询问）：
+按来源数量分流：
+
+**单来源**：向用户询问：
 
 ```text
-检测到以下来源已提取过：
+检测到该来源已提取过：
 - 来源: {URL 或 PDF 文件名}
 - 已有 raw 文件: {raw_dir}/{raw_filename}.md
 
-请选择（可逐条选择）：
+请选择：
 [1] 跳过（保留已有文件，不再处理）
 [2] 重新提取并覆盖旧文件（删除旧 raw + 关联的 summary 文件，再执行 Step 2 提取）
 ```
@@ -88,6 +90,8 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
   2. 删除已匹配的 summary 文件。
   3. 删除当前 raw 文件。
   4. 该来源保留为待提取。
+
+**多来源（静默模式）**：重复来源**一律跳过**，不询问用户、不重新提取。修复不依赖本步骤。
 
 **关于 drug 索引的说明**：
 
@@ -100,7 +104,8 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 - `raw_filename`（raw 基础名，确保本次来源间唯一）
 - `source_label`（如 `ASCO2026`；本次来源间冲突时追加最短必要后缀 `_2`、`_3`，确保唯一）
-- 相关身份字段准备：`drug_id`、`indication_id`、`source_type`、`combination_regimen`、`clinical_match_key`、`target`
+
+`drug_id` 与 `indication_id` 不在本步骤分配，由每个提取子 agent 在 extract-one.md 中按固定优先级规则自行确定（固定规则保证任何 subagent 结果一致）。
 
 ## Step 2: 并行提取
 
