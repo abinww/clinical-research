@@ -33,7 +33,9 @@
 - 原始来源标识:URL 或 PDF 文件名。
 - 来源发布日期:从原文提取明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `published_date: null`，不得用当前日期代替。
 - summary 生成日期:写入 `created`，使用实际生成日期。
-- `drug_id`: 按 `drug-spec.md` 的**固定优先级**确定：开发代码 > 短名称/缩写 > 中文通用名 > 英文通用名。固定规则保证同一药物在任何 subagent 中结果一致，不做编排层分配。
+- `drug_id`: 调用 `../drug-identity/SKILL.md` 解析获取（读取其输出身份对象中的 `drug_id` 字段）。本文件不自行确定 drug_id。
+- `drug`: 从身份对象的 `drug_aliases` 中选取通用名作为展示名。
+- `drug_aliases`: 身份对象中的别名全集。
 - `indication_id`: 按 `indication-spec.md` 的规范命名确定（含治疗线规范化）；治疗线无法判断时保留 `line: null`，不得猜测为 1L。
 - `source_label`: 使用调用方分配的值，不自行生成。
 - `source_type`: 标准化为 `journal`、`conference`、`company_release`、`regulatory` 或 `other`。

@@ -28,11 +28,7 @@ description: |
 
 ## Step 1: 药物身份锚定
 
-读取 `../data-search/SKILL.md`，按其中 Step 1 执行：
-
-- 搜索 `{代号} + 公司名`、`{代号} + clinical trial`
-- 收集别名全集（研发代号、合作方代号、通用名、商品名）
-- 确定 `drug_id`、target、公司、分子类型
+读取 `../drug-identity/SKILL.md`，按其中 workflow 执行，获取该药品的标准身份对象（drug_id、drug_aliases、target、companies、molecule_type；drug 展示名从 drug_aliases 选取）。
 
 如果无法确认药物身份，停下返回用户确认，不进入后续步骤。
 

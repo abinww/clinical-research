@@ -125,6 +125,7 @@ python -m pip install -r {skill_root}/clinical-research/drug-trials-search/requi
 {skill_root}/clinical-research/clinical-indexer/
 {skill_root}/clinical-research/drug-trials-search/
 {skill_root}/clinical-research/data-search/
+{skill_root}/clinical-research/drug-identity/
 {skill_root}/clinical-research/data-verify/
 {skill_root}/clinical-research/drug-build/
 {skill_root}/clinical-research/drug-build/scripts/check_plan_progress.py

@@ -33,7 +33,9 @@ description: |
 - **适应症**（可选）：如 "非小细胞肺癌"、"NSCLC"
 - **Sponsor**（可选）：如 "Merck"、"AstraZeneca"
 
-同时按 `drug-spec.md` 的命名优先级确定 `drug_id`，用于定位 `drug/{drug_id}.md`；查询参数仍使用用户提供的药品名称或已确认别名。
+调用 `../drug-identity/SKILL.md` 解析药品身份，获取标准身份对象（drug_id、drug_aliases、target、companies、molecule_type；drug 展示名从 drug_aliases 选取）。无法确认身份时停下询问用户。
+
+CTG 查询时使用 `drug_id` 及 `drug_aliases` 中的主要别名作为查询词（避免只给商品名时搜不到研发代号登记的试验）。
 
 ## Step 2: 执行 clinicaltrials.gov 查询
 

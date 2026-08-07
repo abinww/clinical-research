@@ -36,48 +36,26 @@ description: |
 
 ## Step 1: 药物身份锚定
 
-> ⚠️ 搜不到代号就停下问用户，不猜测，不进入后续步骤。
-
-1. 搜索 `{代号} + 公司名`、`{代号} + clinical trial`
-2. 查公司官网管线页
-3. 收集**别名全集**：研发代号、合作方代号、通用名、商品名
-4. 识别：靶点、分子类型（ADC/双抗/单抗/小分子）、研发公司、合作方
-
-示例：Enhertu（DS-8201）的别名全集可能是：
+读取 `../drug-identity/SKILL.md`，按其中 workflow 执行，获取该药品的标准身份对象：
 
 ```text
-研发代号: DS-8201
-合作方代号: T-DXd
-通用名: trastuzumab deruxtecan（德曲妥珠单抗）
-商品名: Enhertu（优赫得）
-```
-
-内部记录（不单独保存文件）：
-
-```text
-drug_id: {按 drug-spec.md 优先级确定}
-drug: {通用名}
+drug_id: {按固定优先级确定}
+drug_aliases: {研发代号/合作方代号/商品名等全集}
 target: {最简形式}
-aliases: {别名全集}
 companies: {研发公司及合作方}
 molecule_type: {ADC/双抗/单抗/小分子}
 ```
 
-如果无法确认药物身份（代号搜不到、别名无法收集），停下返回：
+（drug 展示名从 drug_aliases 中选取通用名。）
 
-```text
-无法确认药物身份：{代号}
-请确认：是否指 {候选1} 或其他药物？
-```
-
-确认后才继续。
+如果无法确认药物身份，停下返回用户确认，不进入后续步骤。
 
 ## Step 2: 官方临床试验注册库
 
-1. 复用 `drug-trials-search` 脚本查 ClinicalTrials.gov：
+1. 复用 `drug-trials-search` 脚本查 ClinicalTrials.gov，使用身份对象中的 `drug_id` 或主要别名作为查询词：
 
 ```bash
-python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{药品名称或别名}" --format json
+python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或主要别名}" --format json
 ```
 
 2. 从 JSON 结果中提取 NCT 编号、阶段、适应症、状态清单，作为后续搜索的索引骨架。

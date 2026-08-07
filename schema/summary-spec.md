@@ -88,7 +88,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | drug_id | 字符串 | 开发代码或规范短名（必填；用于 summary 目录、文件名和 drug 索引归档） |
-| drug | 字符串 | 药品通用名（必填；用于展示） |
+| drug | 字符串 | 展示名（必填；从 drug_aliases 中选取通用名，用于展示） |
 | drug_aliases | 数组 | 别名、商品名 |
 | indication_id | 字符串 | 规范适应症ID（必填；用于 indication 索引文件名） |
 | indication | 字符串 | 适应症（必填） |
