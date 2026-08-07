@@ -121,6 +121,7 @@ python -m pip install -r {skill_root}/clinical-research/drug-trials-search/requi
 {skill_root}/clinical-research/initial.md
 {skill_root}/clinical-research/schema/
 {skill_root}/clinical-research/clinical-extractor/
+{skill_root}/clinical-research/multi-extractor/
 {skill_root}/clinical-research/batch-extractor/
 {skill_root}/clinical-research/clinical-indexer/
 {skill_root}/clinical-research/drug-trials-search/

@@ -10,7 +10,7 @@ description: |
 # 临床数据来源搜索
 
 > 本文件由 clinical-research/SKILL.md 路由后读取执行。
-> 职责：搜索某创新药已公布的临床数据来源，输出一个 plan 表，供 `clinical-extractor` 后续逐个提取。
+> 职责：搜索某创新药已公布的临床数据来源，输出一个 plan 表。
 > 本 skill 不提取数据、不写入 `raw/`/`summary/`/`drug/`/`indication/`，只产出候选 URL 清单；plan 表直接返回，不保存文件。
 
 ## 执行约束
@@ -18,9 +18,9 @@ description: |
 - ✅ 搜索已公布的临床疗效/安全性数据来源（期刊、会议、公司公告、注册库）
 - ✅ 输出 plan 表，直接返回给用户或下一步调用
 - ✅ 搜不到药物代号时停下询问用户，不猜测
-- ❌ 不提取临床数据（由 `clinical-extractor` 负责）
+- ❌ 不提取临床数据（由 `multi-extractor` 负责）
 - ❌ 不写入 `raw/`、`summary/`、`drug/`、`indication/`
-- ❌ 不调用 `clinical-extractor`
+- ❌ 不调用 `multi-extractor`
 - ❌ 不评价临床数据质量
 - ❌ 不用二手媒体数字作为数据源
 
@@ -157,7 +157,7 @@ python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或�
 
 ## Step 9: 输出报告
 
-plan 表不保存到文件，直接返回给用户或下一步（`clinical-extractor` 调用）使用。
+plan 表不保存到文件，直接返回给用户或下一步（`multi-extractor` 调用）使用。
 
 ```text
 data-search 完成：
@@ -167,7 +167,7 @@ data-search 完成：
 - 含临床数据: M 个
 - 去重后保留: K 个
 - plan 表: （直接返回）
-- 下一步: 用户确认 plan 表后，逐个调用 clinical-extractor 提取
+- 下一步: 用户确认 plan 表后，逐个调用 multi-extractor 提取
 ```
 
 ## 常见问题

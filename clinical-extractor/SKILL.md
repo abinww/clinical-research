@@ -1,188 +1,157 @@
 ---
 name: clinical-extractor
 description: |
-  临床数据提取编排执行步骤（供clinical-research主skill调用）
+  临床数据提取单元（供 clinical-research 主 skill 编排调用）。
   
-  当主skill路由到本文件时，按以下步骤执行：
+  不从主接口直接触发，由编排层按需调用。
 ---
 
-# 临床数据提取 - 编排层
+# 临床数据提取 - 单来源单元
 
-> 本文件由 clinical-research/SKILL.md 路由后读取执行。
-> 总流程：来源预检 → 并行提取（extract-one.md）→ data-verify 验证 → clinical-indexer 归档。
-> 单来源处理单元在 `extract-one.md`，本文件只负责编排，不重复实现提取细节。
+> 本文件不从主接口直接触发，由编排层按需调用。
+> 职责：把**单个来源**（URL 或 PDF）处理为 `raw/` 文件 + `summary/` 文件。
+> 本 skill 只做提取，不含验证（data-verify）、索引（clinical-indexer）、身份解析（drug-identity）——这些由编排方统一处理。
 
-## 执行原则
+## 输入
 
-- 必须按主步骤顺序执行,不得跳过（Step 1 → Step 2 → Step 3 → Step 4 → Step 5）。
-- `raw/` 是原始采集层,只保存工具提取结果,不允许大模型改写、总结、翻译、重排、删减或补全正文。
-- `summary/` 是结构化摘要层,按药品分子目录组织(`summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md`)；summary 直接保存到正式目录，审核章节由 data-verify 后补；后续来源不得覆盖已有快照。
-- 具体文件格式只以 `../schema/summary-spec.md` 和 `../schema/drug-spec.md` 为准;本 workflow 不重复定义格式细节。
-- 如果任一步失败,按该步骤的失败处理规则终止或回修,不得继续污染后续索引。
-- 审核独立性由 `data-verify` 子 skill 保证：提取方不得自行判定数据通过，必须由独立 verifier 子 agent 执行 data-verify。
-- 多来源并行：每轮并发子 agent 数 ≤ 5（OpenClaw 默认 `maxChildrenPerAgent=5`），一轮完成后若还有剩余继续下一轮。
+- 单个来源：一个 URL 或一个 PDF 文件路径
+- 调用方传入的身份与命名参数：
+  - `drug_id`（唯一识别名，用于 summary 目录与文件名）
+  - `drug_aliases`（别名全集，写入 summary frontmatter）
+  - `target`（最简形式）
+  - `raw_filename`（raw 基础名，调用方已保证唯一）
+  - `source_label`（来源标签，调用方已保证唯一）
 
 ## 执行门禁
 
-处理任何 URL/PDF 前,必须完成并确认:
+处理前必须确认：
 
 ```text
-EXTRACTOR PREFLIGHT:
 - ../config.yaml read: yes
 - raw_dir:
 - summary_dir:
-- drug_dir:
 - ../schema/summary-spec.md read: yes
-- ../schema/drug-spec.md read: yes
-- ../data-verify/SKILL.md read: yes
-- ../clinical-indexer/SKILL.md read: yes
 ```
 
-如果任一必读文件无法读取,必须停止并报告原因,不得提取、写入或自行猜测目录/格式。
+任一必读文件无法读取，停止并报告原因。
 
-## Step 1: 来源预检
+## Step 1: 确认输入
 
-主 agent 对本次全部来源（URL/PDF 列表）统一执行预检：
+- 单个 URL：进入 Step 2。
+- 单个 PDF 文件路径：进入 Step 2。
+- 其他输入：返回错误，终止。
 
-### 1.1 识别来源
+同时准备以下信息：
 
-从当前或上一条对话中提取来源列表：
+- 原始来源标识:URL 或 PDF 文件名。
+- 来源发布日期:从原文提取明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `published_date: null`，不得用当前日期代替。
+- summary 生成日期:写入 `created`，使用实际生成日期。
+- `drug_id`: 使用调用方传入的值，不自行解析。
+- `drug`: 从调用方传入的 `drug_aliases` 中选取通用名作为展示名。
+- `drug_aliases`: 使用调用方传入的别名全集。
+- `target`: 使用调用方传入的值。
+- `indication_id`: 按 `indication-spec.md` 的规范命名确定（含治疗线规范化）；治疗线无法判断时保留 `line: null`，不得猜测为 1L。
+- `source_label`: 使用调用方分配的值，不自行生成。
+- `source_type`: 标准化为 `journal`、`conference`、`company_release`、`regulatory` 或 `other`。
+- `published_date`: 只记录来源明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `null`，不得用提取日期代替。
+- `combination_regimen`: 标准化联合用药方案；单药也必须明确记录。
+- `phase`: 从原文识别临床阶段（Phase I/II/III/IV）；无法确定时写 `null` 并备注"待确认"，不得猜测。
+- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成；phase 无法确定时该段留空（如 `ABC123|化疗|NSCLC_1L|`），indexer 按不完整 key 降级为独立追加记录；临床试验代码只能作为参考字段。
 
-- 单个 URL 或 PDF：进入 1.2。
-- 多个 URL/PDF：全部列出，进入 1.2。
-- 不包含 URL 或 PDF:要求用户补充来源,终止执行。
+## Step 2: 生成并写入 raw/
 
-### 1.2 统一去重
+### 2.1 提取原始内容
 
-扫描 `{raw_dir}` 下所有 `.md` 文件的 YAML frontmatter `source:` 字段，与本次来源对比：
+URL 来源调用:
 
-- URL 来源：直接对比 URL 字符串
-- PDF 来源：对比 PDF 文件名
-
-```bash
-grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
+```
+tavily_extract urls=<URL> extract_depth=advanced include_images=true
 ```
 
-标记两类重复：
+PDF 来源优先使用:
 
-- **与已有 raw 重复的来源**：按 1.3 处理。
-- **本次来源之间重复的来源**：只保留一个，其余标记跳过。
+```
+pdftotext <pdf路径> -
+```
 
-### 1.3 重复来源处理
+如果 `pdftotext` 不可用或效果差,再使用:
 
-按来源数量分流：
+```
+nano-pdf --file <pdf路径> --action read
+```
 
-**单来源**：向用户询问：
+### 2.2 写入 raw 文件
+
+在提取结果前添加 YAML frontmatter:
+
+```yaml
+---
+source: {URL 或 PDF文件名}
+published_date: {YYYY-MM-DD 或 null}
+created: {YYYY-MM-DD}
+---
+```
+
+`created` 是 raw 实际提取日期，不是来源发布日期；`published_date` 只能填写原文明确提供的来源日期。
+
+写入:
+
+```
+write path={raw_dir}/{raw_filename}.md content={YAML frontmatter + 原始提取内容}
+```
+
+### 2.3 raw 质量要求
+
+- `raw/` 正文必须是 `tavily_extract` / `pdftotext` / `nano-pdf` 返回内容的完整原始输出。
+- 禁止使用大模型对正文做任何压缩、总结、翻译、重排、去重、润色、结构化或补全。
+- 只允许添加 YAML frontmatter。
+- 如果无法保留工具原始输出,必须终止;不得用模型重建 raw。
+- 如果提取失败、正文为空、或明显不是临床资料,返回错误报告并终止后续步骤。
+
+## Step 3: 生成并保存 summary/
+
+目标:从 `raw/` 生成规范化临床摘要,保存到 `summary/{drug_id}/` 子目录下。审核由 data-verify 在后续步骤完成，不在本步骤执行。
+
+### 3.1 生成 summary 内容
+
+读取 `../schema/summary-spec.md`。
+
+基于 Step 2 写入的 `raw/` 文件生成 summary。摘要结构、字段、章节、表格均必须遵守 `summary-spec.md`。摘要的 H1 标题后必须包含 `> 来源原文: [[raw/{当前 raw 文件名}.md]]` 一行,用于在 Obsidian 中建立 direct wikilink。
+
+生成的 summary **不包含** 数据一致性审核章节和 verification 字段（由 data-verify 在后续步骤写入），其余内容完整。
+
+**多适应症来源**：若来源内容包含多个适应症（如一个 poster 同时含 ES-SCLC 与 EGFR-NSCLC），按调用方派发时注明的"主适应症"生成主 summary；若含明确的次要适应症，也生成对应 summary（各自独立文件）。
+
+### 3.2 写入 summary 文件
+
+写入前必须通过:
 
 ```text
-检测到该来源已提取过：
+SUMMARY WRITE GATE:
+- summary-spec.md read: yes
+- summary filename matches {drug_id}@{indication_id}@{source_label}.md: yes
+- "> 来源原文:" wikilink points to current raw file: yes
+```
+
+如果任一项不是 `yes`,不得写入 `summary/` 文件。
+
+写入前必须确保子目录存在:
+
+```
+mkdir -p {summary_dir}/{drug_id}
+write path={summary_dir}/{drug_id}/{summary_filename} content={符合 summary-spec.md 的完整 summary 内容}
+```
+
+## 返回
+
+返回给调用方（multi-extractor）：
+
+```text
 - 来源: {URL 或 PDF 文件名}
-- 已有 raw 文件: {raw_dir}/{raw_filename}.md
-
-请选择：
-[1] 跳过（保留已有文件，不再处理）
-[2] 重新提取并覆盖旧文件（删除旧 raw + 关联的 summary 文件，再执行 Step 2 提取）
+- raw/ 路径: {raw_dir}/{raw_filename}.md
+- summary/ 路径列表: （一个或多个）
+- 结果: 成功 / 失败 / 跳过 / 发现重复
+- 失败原因或重复信息: （如有）
 ```
 
-- 选项 [1]：该来源标记为跳过，不再提取。
-- 选项 [2]：级联删除：
-  1. 查找指向该 raw 的 summary 文件（遍历 `{summary_dir}` 下 `.md` 文件，匹配 `> 来源原文: [[raw/{raw 文件名}]]` 行）。
-  2. 删除已匹配的 summary 文件。
-  3. 删除当前 raw 文件。
-  4. 该来源保留为待提取。
-
-**多来源（静默模式）**：重复来源**一律跳过**，不询问用户、不重新提取。修复不依赖本步骤。
-
-**关于 drug 索引的说明**：
-
-- 若重新提取后 summary 文件名与旧文件相同，indexer 归档时会按来源链接幂等合并，不重复追加。
-- 若文件名发生变化，drug 索引中旧的 `> 来源:` 行会指向已删除的 summary 文件，成为断链；断链由 `clinical-indexer` 清理或用户人工处理。
-
-### 1.4 分配来源身份
-
-为每个待提取来源分配：
-
-- `raw_filename`（raw 基础名，确保本次来源间唯一）
-- `source_label`（如 `ASCO2026`；本次来源间冲突时追加最短必要后缀 `_2`、`_3`，确保唯一）
-
-`drug_id` 与 `indication_id` 不在本步骤分配，由每个提取子 agent 在 extract-one.md 中按固定优先级规则自行确定（固定规则保证任何 subagent 结果一致）。
-
-## Step 2: 并行提取
-
-对预检后待提取的来源列表执行提取：
-
-```text
-- 多来源：每轮 spawn ≤5 个提取子 agent，每个子 agent 处理 1 个来源，
-  读取并执行 extract-one.md（使用 Step 1.4 分配的 raw_filename / source_label）
-- 单来源：spawn 1 个提取子 agent 执行 extract-one.md
-- 一轮完成后若还有剩余来源，开始下一轮
-- 降级：当前环境无法 spawn 子 agent 时，主 agent 顺序执行 extract-one.md
-  （逐个来源处理，效果相同）
-```
-
-每个提取子 agent 的 prompt 必须包含：
-
-```text
-读取 clinical-extractor/extract-one.md，处理以下单个来源：
-{URL 或 PDF}
-- 使用已分配的 raw_filename: {值}，source_label: {值}
-- 按 extract-one.md 的 Step 1-3 执行
-- 返回：来源、raw/ 路径、summary/ 路径、结果（成功/失败/跳过/发现重复）、失败原因
-```
-
-处理规则：
-
-- 子 agent 返回"发现重复"：由主 agent 按 Step 1.3 处理（询问用户或跳过）。
-- 某个来源失败（提取失败、空内容、非临床资料）：记录失败项，不影响其他来源继续处理。
-- 全部来源处理完毕后，汇总全部 summary 路径列表，进入 Step 3。
-
-## Step 3: 调用 data-verify 验证
-
-对 Step 2 汇总的全部 summary 执行审核：
-
-```text
-- 按批并行 spawn verifier 子 agent（每轮 ≤5 个并发）
-- 每个 verifier 负责一批 summary（建议每批 2-3 个）
-- 一轮完成后若还有剩余 summary，开始下一轮
-```
-
-每个 verifier 的 prompt 必须包含：
-
-```text
-按 data-verify/SKILL.md 验证以下 summary 列表（每个 summary 独立审核）：
-{批次内的 summary 路径列表}
-对每个 summary：读取其 `> 来源原文:` 指向的 raw 文件，写入审核章节
-与 verification 字段；返回每个 summary 的 PASS/WARN/FAIL 数量
-```
-
-规则：
-
-1. 读取 `../data-verify/SKILL.md`，按其中 workflow 执行。
-2. 每个 summary 必须由独立的 data verifier 子 agent 执行 data-verify workflow（提取方不得自行替代审核）：
-   - 输入：该 summary 文件 + 对应 raw 文件
-   - 由 verifier 子 agent 将审核结果写入 summary 末尾的 `## 数据一致性审核` 章节，并更新 YAML 的 `verification` / `verification_fail_count` 字段
-3. 如果当前环境无法 spawn data verifier 子 agent，必须停止并报告无法满足审核要求；不得由主 agent 自行替代审核。
-4. 审核失败处理：
-   - 存在 `FAIL`：按 verifier 输出的问题修正对应 summary 正文（数据错误处），然后**只重新 spawn verifier 验证该 FAIL 的 summary**，已通过的 summary 不重跑。
-   - 存在 `WARN`：可以继续，但必须在最终返回报告中列出 WARN 项，提示用户人工复核。
-   - 全部通过：`verification: passed` / `verification_fail_count: 0` 由 verifier 写入，进入 Step 4。
-
-## Step 4: 调用 clinical-indexer
-
-目标:把本次通过的 summary 归档到 drug/ 与 indication/ 索引。
-
-1. 读取 `../clinical-indexer/SKILL.md`，按其中增量归档 workflow 执行。
-2. indexer 扫描全部 `summary/`，按身份字段计算期望页面并补齐 `drug/` 与 `indication/`，天然支持本次处理的多个 summary。
-3. 若 indexer 归档失败，报告 `summary/` 已生成但索引未更新；不回滚已写入的 `summary/` 文件。
-
-## Step 5: 返回汇总报告
-
-```text
-- 待提取来源: N 个（跳过 X 个 / 重新提取 Y 个）
-- raw/ 文件路径列表
-- summary/ 文件路径列表
-- 数据一致性审核结果（PASS/WARN/FAIL 汇总；如有 WARN 列出人工复核项）
-- indexer 归档结果
-- 失败项: （列表及原因；如有）
-- 提取的关键数据摘要
-```
+**发现重复**：若执行中发现该来源已在 `raw/` 存在（预检后新增的极端情况），不得询问用户，直接返回"发现重复"及匹配到的已有 raw/summary 路径，由调用方处理。

@@ -59,8 +59,7 @@ PREFLIGHT:
 
 | 用户输入 | 子 Skill | 动作 |
 |---------|---------|------|
-| 明确要求“提取临床数据”且提供 URL | clinical-extractor | 完整流程: URL → raw/ → summary/ |
-| 明确要求“提取临床数据”且提供 PDF | clinical-extractor | 提取 PDF 并生成摘要 |
+| 明确要求“提取临床数据”且提供 URL/PDF | multi-extractor | 提取唯一入口，含验证与索引 |
 | "扫描/批处理临床数据" | batch-extractor | 批量: raw/ → summary/ |
 | "更新/同步/扫描索引" | clinical-indexer | 增量扫描全部 summary，分别补齐 drug/ 与 indication/ |
 | "整理临床数据" / "归档临床数据" / "整理数据" | clinical-indexer | 增量模式：扫描未整理的 summary → 更新 drug/indication |
@@ -84,7 +83,7 @@ PREFLIGHT:
 ## 常见错误（避免）
 
 ❌ **错误**：看到URL就直接 `tavily_extract` 提取内容给用户  
-✅ **正确**：先读 `clinical-extractor/SKILL.md`，按workflow执行
+✅ **正确**：先读 `multi-extractor/SKILL.md`，按workflow执行
 
 ❌ **错误**：跳过YAML frontmatter直接保存内容  
 ✅ **正确**：严格添加 `source:` 和 `created:` 到raw/文件

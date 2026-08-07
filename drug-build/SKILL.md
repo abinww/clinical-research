@@ -4,7 +4,7 @@ description: |
   创新药数据库建库编排。当用户提到以下关键词时触发：
   - "对{药品}建库"
   - "建库"
-  本 skill 编排 drug-trials-search、data-search、clinical-extractor 完成完整建库。多链接的提取、验证与索引归档由 clinical-extractor 内部处理。
+  本 skill 编排 drug-trials-search、data-search、multi-extractor 完成完整建库。多链接的提取、验证与索引归档由 multi-extractor 内部处理。
 ---
 
 # 创新药建库编排
@@ -21,10 +21,11 @@ description: |
 
 ## 固化规则
 
-1. **多链接处理全部委托 clinical-extractor**：待处理 URL 一次性传入 extractor，由其内部完成并行提取、data-verify 验证、indexer 归档。
+1. **多链接处理全部委托 multi-extractor**：待处理 URL 一次性传入 multi-extractor，由其内部完成并行提取、data-verify 验证、indexer 归档。
 2. **完成判断以脚本为准**：`check_plan_progress.py` 按"plan 表 URL → raw source 匹配 → summary 引用 → verification"三级判断每个 URL 状态，不猜文件名。
-3. **静默执行**：重复来源由 extractor 静默跳过（不询问）；"已提取未生成summary" / "未审核"行不重跑，记入失败项报告人工处理；仅在身份无法确认、plan 表为空时停下询问。
-4. **搜不到药物身份就停**：沿用 data-search Step 1 规则，不猜测。
+3. **重试上限**：plan 表未完成行整体重跑一次 multi-extractor；每行总尝试上限 2 次，第二次仍失败 → 记入最终报告，不再重试。
+4. **静默执行**：重复来源由 multi-extractor 静默跳过（不询问）；仅在身份无法确认、plan 表为空时停下询问。
+5. **搜不到药物身份就停**：沿用 drug-identity 规则，不猜测。
 
 ## Step 1: 药物身份锚定
 
@@ -66,34 +67,34 @@ python3 {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --pla
 plan 表进度：
 - {url}: 已完成 / 未提取 / 已提取未生成summary / 未审核
 
-待处理 URL（传给 clinical-extractor）：
+待处理 URL（传给 multi-extractor）：
 - {未提取 的 URL 列表}
 
 失败项（报告人工处理）：
 - {已提取未生成summary / 未审核 的 URL 列表}
 ```
 
-### 5.2 调用 clinical-extractor 提取待处理 URL
+### 5.2 调用 multi-extractor 提取待处理 URL
 
-读取 `../clinical-extractor/SKILL.md`，把脚本输出的**待处理 URL**（未提取）作为多链接输入一次性传入，按其中 workflow 完整执行：
+读取 `../multi-extractor/SKILL.md`，把脚本输出的**待处理 URL**（未提取）作为多链接输入一次性传入，按其中 workflow 完整执行：
 
-- 多链接的并行提取、data-verify 验证、indexer 归档都由 clinical-extractor 内部处理，本 skill 不重复实现
-- clinical-extractor 完成：每个 URL 的 raw/ + summary/，全部 summary 经 data-verify 验证（含 FAIL 回修），并调用 clinical-indexer 归档
-- 收集 clinical-extractor 的返回结果（提取数、验证汇总、归档结果、失败项）
+- 多链接的并行提取、data-verify 验证、indexer 归档都由 multi-extractor 内部处理，本 skill 不重复实现
+- multi-extractor 完成：每个 URL 的 raw/ + summary/，全部 summary 经 data-verify 验证（含 FAIL 回修），并调用 clinical-indexer 归档
+- 收集 multi-extractor 的返回结果（提取数、验证汇总、归档结果、失败项）
 
 ## Step 6: 复查完成情况
 
 再次运行 Step 5.1 的进度检查脚本，确认 plan 表剩余行状态：
 
 ```text
-- "未提取" → 重新传给 clinical-extractor 再次提取
-- "已提取未生成summary" / "未审核" → 不重跑，记入最终报告的失败项，留待用户人工处理
+- "未提取" → 重跑一次 multi-extractor（Step 5.2）
+- "已提取未生成summary" / "未审核" → 第二次仍失败则记入最终报告的失败项，不再重试
 - "已完成" → 该行完成
 ```
 
 - 全部行"已完成"：删除 plan 表文件（`drug/temp/search_plan_{drug_id}_{date}.md`），进入 Step 7 输出报告。
-- 仍有"未提取"行：重复执行 Step 5.2 提取，再复查。
-- 存在"已提取未生成summary" / "未审核"行：不重跑（extractor 静默模式对重复来源一律跳过），记入失败项，进入 Step 7。
+- 仍有"未提取"行：**重跑一次** multi-extractor（每行总尝试上限 2 次），再复查；第二次仍失败 → 记入失败项，进入 Step 7。
+- 存在"已提取未生成summary" / "未审核"行：不重跑（multi-extractor 静默模式对重复来源一律跳过），记入失败项，进入 Step 7。
 
 ## Step 7: 输出报告
 
@@ -114,7 +115,7 @@ drug-build 完成：
 
 ### Q: 为什么不需要在 drug-build 里管理多链接并发？
 
-多链接的提取与验证并发全部在 `clinical-extractor` 内部处理（每轮 ≤5 个并发子 agent，OpenClaw 默认 `maxChildrenPerAgent=5`）。drug-build 只负责把 plan 表全部 URL 传入，保持编排职责单一。
+多链接的提取与验证并发全部在 `multi-extractor` 内部处理（每轮 ≤5 个并发子 agent，OpenClaw 默认 `maxChildrenPerAgent=5`）。drug-build 只负责把 plan 表全部 URL 传入，保持编排职责单一。
 
 ### Q: 提取阶段未验证的 summary 已写入 summary/？
 
@@ -122,8 +123,8 @@ drug-build 完成：
 
 ### Q: 某行反复 FAIL 怎么办？
 
-clinical-extractor 内部处理：修正 2 次仍 FAIL 后，报告该行失败并留给用户人工处理，继续处理其他行；drug-build 的 Step 6 复查脚本会把"已提取未生成summary" / "未审核"行记入失败项，不重跑（extractor 静默模式对重复来源一律跳过），最终报告列出。
+multi-extractor 内部处理：提取失败带原因重试一次，验证 FAIL 修正后重验一次；drug-build 的 Step 6 对 plan 表未完成行整体重跑一次 multi-extractor。每行总尝试上限 2 次，之后记入失败项不再重试，最终报告列出。
 
 ### Q: 重复来源在静默模式下如何处理？
 
-extractor 多来源静默模式下，重复来源一律跳过，不询问、不重新提取。drug-build 的重跑只覆盖"未提取"行；需要修复已提取但未审核的 summary 时，由用户人工处理。
+multi-extractor 多来源静默模式下，重复来源一律跳过，不询问、不重新提取。drug-build 的重跑只覆盖"未提取"行；需要修复已提取但未审核的 summary 时，由用户人工处理。

@@ -17,7 +17,8 @@
 
 | 目录 | 用途 |
 | --- | --- |
-| `clinical-extractor/` | 从 URL 或 PDF 提取临床资料，并生成结构化摘要。 |
+| `multi-extractor/` | 提取唯一入口：单/多链接并行提取、验证与索引编排。 |
+| `clinical-extractor/` | 单来源提取单元：URL/PDF → raw/ → summary/。 |
 | `batch-extractor/` | 批量处理 raw 目录下尚未整理的临床资料。 |
 | `clinical-indexer/` | 定时或手动扫描全部 summary，分别查漏补缺 drug/ 和 indication/ 索引。 |
 | `drug-trials-search/` | 查询临床试验注册信息，并写入药品管线表。 |
@@ -112,9 +113,9 @@ python -m pip install -r clinical-research/drug-trials-search/requirements.txt
 
 | 目录 | 职责 | 写入方 |
 | --- | --- | --- |
-| `raw/` | 工具（tavily_extract / pdftotext 等）的原始输出，禁止大模型改写 | clinical-extractor、batch-extractor |
-| `summary/` | 结构化临床摘要，按药品分子目录组织，必须通过数据一致性审核 | clinical-extractor、batch-extractor |
-| `drug/` | 药品索引，按药品平铺，一药一文件；创建时可由任一 writer 建立基本信息，clinical-extractor/clinical-indexer 维护临床数据汇总和关键里程碑，drug-trials-search 仅维护当前临床管线 | clinical-extractor、clinical-indexer、drug-trials-search |
+| `raw/` | 工具（tavily_extract / pdftotext 等）的原始输出，禁止大模型改写 | multi-extractor（clinical-extractor 执行）、batch-extractor |
+| `summary/` | 结构化临床摘要，按药品分子目录组织，必须通过数据一致性审核 | multi-extractor（clinical-extractor 执行）、batch-extractor |
+| `drug/` | 药品索引，按药品平铺，一药一文件；创建时可由任一 writer 建立基本信息，clinical-indexer 维护临床数据汇总和关键里程碑，drug-trials-search 仅维护当前临床管线 | drug-identity（骨架）、clinical-indexer、drug-trials-search |
 | `indication/` | 适应症索引，按适应症平铺 | clinical-indexer |
 | `trials/` | 临床试验注册查询的原始结果 | drug-trials-search |
 | `attachments/` | 图片附件 | clinical-extractor（多模态提取） |

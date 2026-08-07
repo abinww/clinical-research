@@ -1,12 +1,12 @@
 ---
 name: drug-identity
 description: |
-  药品身份解析工具。仅由 data-search / drug-build / drug-trials-search / clinical-extractor 编排调用，不从主接口直接触发。
+  药品身份解析工具。不从主接口直接触发，由编排层按需调用。
 ---
 
 # 药品身份解析
 
-> 本文件由 data-search / drug-build / drug-trials-search / clinical-extractor 编排调用，不从主接口直接触发。
+> 本文件不从主接口直接触发，由编排层按需调用。
 > 职责：给定任意药品名称/代号/商品名，统一解析该药品的标准身份（drug_id、drug_aliases、target、companies、molecule_type）。
 > 本 skill 是 drug_id 的唯一确定入口：所有子 skill 不得自行决定 drug_id，必须经本 skill 解析。
 
@@ -103,7 +103,7 @@ molecule_type: {ADC/双抗/单抗/小分子}
 - **文件不存在**：只创建 YAML frontmatter 和 `## 基本信息`，**不补全后续临床章节**：
   - frontmatter：`drug_id`、`drug`（从 drug_aliases 选取通用名）、`drug_aliases`、`target`、`companies`、`created`、`updated`
   - `## 基本信息`（身份对象字段）
-  - 其他章节（临床数据汇总、关键里程碑、当前临床管线）留空占位即可，由后续 data-search / clinical-extractor / drug-trials-search 按需补充
+  - 其他章节（临床数据汇总、关键里程碑、当前临床管线）留空占位即可，由后续 multi-extractor / drug-trials-search 按需补充
 - **文件已存在**：不覆盖现有内容，只补充缺失的 frontmatter 字段（如新增别名并入 `drug_aliases`），更新 `updated` 日期。
 
 幂等规则：

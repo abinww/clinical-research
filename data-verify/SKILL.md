@@ -5,22 +5,23 @@ description: |
   - "验证这个summary"
   - "审核summary"
   - "检查summary数据"
-  也可由 clinical-extractor / drug-build 编排调用。
+  主要被 multi-extractor / drug-build 编排调用。
 ---
 
 # 数据一致性审核
 
-> 本文件由 clinical-research/SKILL.md 路由后读取执行，或由 clinical-extractor / drug-build 编排调用。
+> 本文件由 clinical-research/SKILL.md 路由后读取执行，或由 multi-extractor / drug-build 编排调用。
 > 职责：验证 summary 文件中的临床数据是否全部来源于对应 raw 文件，并把审核结果写入 summary 文件末尾。
 > 本 skill 只修改 summary 的审核章节和 verification 字段，不碰正文，不联网，不评价临床价值。
 
 ## 执行约束
 
-- ✅ 输入：一个 summary 文件 + 其对应的 raw 文件
-- ✅ 支持批量派发：由一个 verifier 子 agent 负责多个 summary 时，对每个 summary **独立执行**全部步骤（定位文件 → 逐项核对 → 写入审核结果）
+- ✅ 输入：一批 summary 文件路径（调用方分配；单个 summary 时即一批一个）
+- ✅ 批量执行：对每个 summary **独立执行**全部步骤（定位文件 → 逐项核对 → 写入审核结果）
 - ✅ 从 summary 的 `> 来源原文: [[raw/{文件}.md]]` 定位 raw 文件
 - ✅ 按 `schema/summary-spec.md` 的"数据一致性审核"规则逐项核对
 - ✅ 只修改 summary 末尾的 `## 数据一致性审核` 章节和 YAML 的 `verification` / `verification_fail_count` 字段（需要该 summary 文件的写权限）
+- ✅ 不自己扫描 summary/ 目录（扫描由调用方 multi-extractor 统一完成，避免并发重复审核）
 - ❌ 不修改 summary 正文（核心数据、图片、试验设计、专家点评等章节）
 - ❌ 不联网
 - ❌ 不补充新数据
@@ -29,15 +30,17 @@ description: |
 
 ## Step 1: 定位文件
 
-从用户输入或调用方获得 summary 文件路径。
+从用户输入或调用方获得 summary 文件路径列表。
 
-读取 summary 文件，从正文中提取：
+对列表中的**每一个** summary 独立执行 Step 2-5：
+
+读取该 summary 文件，从正文中提取：
 
 ```text
 > 来源原文: [[raw/{raw文件名}.md]]
 ```
 
-得到对应的 raw 文件路径。如果 summary 中没有来源原文行，停止并报告无法定位 raw 文件。
+得到对应的 raw 文件路径。如果 summary 中没有来源原文行，停止该 summary 的审核并报告无法定位 raw 文件，继续处理列表中的下一个。
 
 ## Step 2: 读取审核规范
 
@@ -106,10 +109,12 @@ verification_fail_count: {FAIL数量}
 
 ## Step 5: 返回状态
 
-审核结果已写入 summary 文件，不需要向用户输出审核报告。返回时只给一行状态：
+审核结果已写入各 summary 文件，不需要向用户输出审核报告。返回时逐 summary 一行状态：
 
 ```text
-data-verify: {summary文件名} verification: {passed/failed}（PASS x / WARN y / FAIL z）
+data-verify: {summary文件名1} verification: {passed/failed}（PASS x / WARN y / FAIL z）
+data-verify: {summary文件名2} verification: {passed/failed}（PASS x / WARN y / FAIL z）
+...
 ```
 
 调用方通过 summary YAML 的 `verification` / `verification_fail_count` 字段读取结果，判断是否需要修正后重新验证。
@@ -118,11 +123,11 @@ data-verify: {summary文件名} verification: {passed/failed}（PASS x / WARN y 
 
 ### Q: summary 中找不到 `> 来源原文:` 行？
 
-停止并报告无法定位 raw 文件，不进行审核。
+停止该 summary 的审核并报告无法定位 raw 文件，继续处理列表中的下一个。
 
 ### Q: 发现 FAIL 怎么处理？
 
-把 `verification: failed` 和 FAIL 数量写入 YAML。由调用方（extractor 或 drug-build）负责修正 summary 正文后重新调用本 skill 审核。
+把 `verification: failed` 和 FAIL 数量写入 YAML。由调用方（multi-extractor 或 drug-build）负责修正 summary 正文后重新调用本 skill 审核。
 
 ### Q: 可以修改 summary 正文里的数据吗？
 
