@@ -61,14 +61,78 @@ class TrialResult:
         }
 
 
+COMMON_COUNTRY_CODES = {
+    "United States": "US",
+    "China": "CN",
+    "Japan": "JP",
+    "United Kingdom": "UK",
+    "United Kingdom of Great Britain and Northern Ireland": "UK",
+    "Australia": "AU",
+    "South Korea": "KR",
+    "France": "FR",
+    "Germany": "DE",
+    "Italy": "IT",
+    "India": "IN",
+    "Hong Kong": "HK",
+}
+
+EUROPEAN_COUNTRIES = {
+    "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia",
+    "Denmark", "Estonia", "Finland", "France", "Germany", "Greece",
+    "Hungary", "Ireland", "Italy", "Latvia", "Lithuania", "Luxembourg",
+    "Malta", "Moldova", "Netherlands", "Norway", "Poland", "Portugal",
+    "Romania", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden",
+    "Switzerland", "Turkey", "Turkey (Türkiye)", "Ukraine", "Georgia",
+}
+
+CORE_COUNTRY_ORDER = ("US", "CN", "JP", "UK", "AU")
+
+
 def extract_countries(locations: list[dict]) -> str:
-    """Extract stable, de-duplicated country names from CTG locations."""
-    countries = []
+    """Condense CTG country lists for compact table display.
+
+    Rules:
+    - De-duplicate raw country names first.
+    - When the raw country count is <= 5: list all countries; common
+      countries use two-letter codes (US/CN/JP/UK/AU/KR/FR/DE/...), others
+      keep their full names, in original order.
+    - When the raw country count is > 5: US/CN/JP/UK/AU use two-letter codes
+      in fixed order, remaining European countries merge into "EU", other
+      countries merge into "ETC", and "(total N)" is appended.
+    - No countries -> "—".
+    """
+    raw_countries = []
     for location in locations or []:
         country = str(location.get("country", "")).strip()
-        if country and country not in countries:
-            countries.append(country)
-    return "、".join(countries) if countries else "—"
+        if country and country not in raw_countries:
+            raw_countries.append(country)
+    if not raw_countries:
+        return "—"
+
+    if len(raw_countries) <= 5:
+        return "、".join(COMMON_COUNTRY_CODES.get(c, c) for c in raw_countries)
+
+    parts = []
+    for code in CORE_COUNTRY_ORDER:
+        if any(COMMON_COUNTRY_CODES.get(c) == code for c in raw_countries):
+            parts.append(code)
+
+    european_rest = [
+        c for c in raw_countries
+        if COMMON_COUNTRY_CODES.get(c) not in CORE_COUNTRY_ORDER
+        and c in EUROPEAN_COUNTRIES
+    ]
+    other_rest = [
+        c for c in raw_countries
+        if COMMON_COUNTRY_CODES.get(c) not in CORE_COUNTRY_ORDER
+        and c not in EUROPEAN_COUNTRIES
+    ]
+    if european_rest:
+        parts.append("EU")
+    if other_rest:
+        parts.append("ETC")
+
+    return "、".join(parts) + f"(total {len(raw_countries)})"
 
 
 class ClinicalTrialsGov:

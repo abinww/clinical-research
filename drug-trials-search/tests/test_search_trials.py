@@ -40,13 +40,95 @@ class SearchTrialsTests(unittest.TestCase):
             {"city": "Unknown"},
         ]
 
-        self.assertEqual(extract_countries(locations), "United States、China")
+        self.assertEqual(extract_countries(locations), "US、CN")
+
+    def test_extract_countries_lists_all_when_five_or_less(self):
+        locations = [
+            {"country": "United States"},
+            {"country": "Denmark"},
+            {"country": "Japan"},
+            {"country": "Spain"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "US、Denmark、JP、Spain")
+
+    def test_extract_countries_keeps_uncommon_full_name_when_five_or_less(self):
+        locations = [
+            {"country": "United States"},
+            {"country": "China"},
+            {"country": "Puerto Rico"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "US、CN、Puerto Rico")
+
+    def test_extract_countries_uses_fixed_order_for_core_codes_over_five(self):
+        locations = [
+            {"country": "Japan"},
+            {"country": "United States"},
+            {"country": "United Kingdom"},
+            {"country": "China"},
+            {"country": "Australia"},
+            {"country": "France"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "US、CN、JP、UK、AU、EU(total 6)")
+
+    def test_extract_countries_merges_european_rest_into_eu_over_five(self):
+        locations = [
+            {"country": "United States"},
+            {"country": "Denmark"},
+            {"country": "Japan"},
+            {"country": "Spain"},
+            {"country": "France"},
+            {"country": "Poland"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "US、JP、EU(total 6)")
+
+    def test_extract_countries_merges_other_rest_into_etc_over_five(self):
+        locations = [
+            {"country": "China"},
+            {"country": "Australia"},
+            {"country": "South Korea"},
+            {"country": "Brazil"},
+            {"country": "India"},
+            {"country": "Singapore"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "CN、AU、ETC(total 6)")
+
+    def test_extract_countries_no_total_at_exactly_five(self):
+        locations = [
+            {"country": "United States"},
+            {"country": "China"},
+            {"country": "Japan"},
+            {"country": "France"},
+            {"country": "Australia"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "US、CN、JP、FR、AU")
+
+    def test_extract_countries_returns_dash_when_empty(self):
+        self.assertEqual(extract_countries([]), "—")
+        self.assertEqual(extract_countries(None), "—")
+
+    def test_extract_countries_treats_turkey_as_european_over_five(self):
+        locations = [
+            {"country": "Turkey (Türkiye)"},
+            {"country": "China"},
+            {"country": "Japan"},
+            {"country": "United States"},
+            {"country": "United Kingdom"},
+            {"country": "Australia"},
+        ]
+
+        self.assertEqual(extract_countries(locations), "US、CN、JP、UK、AU、EU(total 6)")
 
     def test_markdown_uses_schema_columns_and_embeds_trial_url(self):
         trial = TrialResult()
         trial.trial_id = "NCT00000001"
         trial.drug_name = "ABC123 + Pembrolizumab"
-        trial.countries = "United States、China"
+        trial.countries = "US、CN"
         trial.indication = "Example Cancer"
         trial.phase = "PHASE2"
         trial.status = "RECRUITING"
@@ -73,7 +155,7 @@ class SearchTrialsTests(unittest.TestCase):
         )
         self.assertNotIn("| 来源 |", output)
         self.assertNotIn("| 链接 |", output)
-        self.assertIn("United States、China", output)
+        self.assertIn("US、CN", output)
 
     def test_pipeline_output_contains_only_ctg_subtable(self):
         output = generate_pipeline_markdown([])

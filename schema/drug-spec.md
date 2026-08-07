@@ -230,14 +230,14 @@ target: HER3/EGFR (双重靶向)    # ❌ 加入机制说明
 
 | 试验ID | 药品 | 开展国家 | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
 |--------|------|----------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
-| [NCT00000001](https://clinicaltrials.gov/study/NCT00000001) | ABC123 + Pembrolizumab + 化疗 | United States、China | Example Cancer 1L | Phase II | Recruiting | 120 | 2023-06 | 2025-12 | — | BigPharma | ORR, DOR | PFS, OS, Safety | 2025-06 |
-| [NCT00000002](https://clinicaltrials.gov/study/NCT00000002) | ABC123 + 化疗 | China | Example Cancer 1L | Phase III | Completed | 600 | 2022-01 | 2024-06 | Standard Therapy | GlobalPharma | OS | PFS, ORR | 2024-12 |
+| [NCT00000001](https://clinicaltrials.gov/study/NCT00000001) | ABC123 + Pembrolizumab + 化疗 | US、CN | Example Cancer 1L | Phase II | Recruiting | 120 | 2023-06 | 2025-12 | — | BigPharma | ORR, DOR | PFS, OS, Safety | 2025-06 |
+| [NCT00000002](https://clinicaltrials.gov/study/NCT00000002) | ABC123 + 化疗 | CN | Example Cancer 1L | Phase III | Completed | 600 | 2022-01 | 2024-06 | Standard Therapy | GlobalPharma | OS | PFS, ORR | 2024-12 |
 ```
 
 **说明**：
 - `试验ID` 以 Markdown 链接形式嵌入，点击直接打开 clinicaltrials.gov 页面：`[NCT编号](https://clinicaltrials.gov/study/NCT编号)`
 - `药品` 列写试验中实际使用的所有药物名称/代码；联合用药以 ` + ` 连接各组成部分（如 `ABC123 + Pembrolizumab + 化疗`）；单药填单名
-- `开展国家` 列来自 clinicaltrials.gov 注册地点的 `locations[].country` 字段；多个国家用 `、` 分隔；没有国家信息填 `—`
+- `开展国家` 列格式由 `drug-trials-search` 脚本统一生成（常见国家缩写与多国收缩规则见该脚本实现）；本规范不重复定义，避免两边冲突；没有国家信息填 `—`
 - 管线范围内含该药品所有适应症的试验，全部放在同一个表格中
 - 按阶段排序（Phase III → II → I），同阶段按开始日期倒序
 
@@ -330,8 +330,8 @@ updated: 2025-05-31
 
 | 试验ID | 药品 | 开展国家 | 适应症 | 阶段 | 状态 | 入组 | 开始 | 预计完成 | 对照 | Sponsor | 主要终点 | 次要终点 | 更新 |
 |--------|------|----------|--------|------|------|------|------|---------|------|---------|---------|---------|------|
-| [NCT00000003](https://clinicaltrials.gov/study/NCT00000003) | ABC123 + Pembrolizumab | United States、China | Example Cancer 1L | Phase III | Active | 398 | 2022-06 | 2027-12 | Standard Therapy | BigPharma | PFS, OS | ORR, DCR, Safety | 2025-06 |
-| [NCT00000004](https://clinicaltrials.gov/study/NCT00000004) | ABC123 | China | Example Cancer 2L | Phase II | Recruiting | 120 | 2024-03 | 2026-06 | — | BigPharma | ORR | PFS, OS | 2025-05 |
+| [NCT00000003](https://clinicaltrials.gov/study/NCT00000003) | ABC123 + Pembrolizumab | US、CN | Example Cancer 1L | Phase III | Active | 398 | 2022-06 | 2027-12 | Standard Therapy | BigPharma | PFS, OS | ORR, DCR, Safety | 2025-06 |
+| [NCT00000004](https://clinicaltrials.gov/study/NCT00000004) | ABC123 | CN | Example Cancer 2L | Phase II | Recruiting | 120 | 2024-03 | 2026-06 | — | BigPharma | ORR | PFS, OS | 2025-05 |
 
 ### chinadrugtrials.org.cn
 
@@ -363,7 +363,7 @@ updated: 2025-05-31
 - [ ] 当前临床管线 包含 clinicaltrials.gov 和 chinadrugtrials.org.cn 子表
 - [ ] 管线试验ID 以 Markdown 链接形式嵌入，可直接点击打开
 - [ ] 管线 药品 列写试验中实际使用的所有药物名称/代码；联合用药以 ` + ` 连接
-- [ ] 管线表格包含 开展国家 列；来自注册地点国家字段，多国用 `、` 分隔；无数据填 `—`
+- [ ] 管线表格包含 开展国家 列；格式由 drug-trials-search 脚本生成，无数据填 `—`
 - [ ] 关键里程碑 按时间排序
 - [ ] 链接路径正确（相对路径或 Obsidian wikilink）
 - [ ] 无数据用 `—`，不留空白单元格
