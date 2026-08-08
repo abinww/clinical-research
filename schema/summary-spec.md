@@ -96,7 +96,7 @@
 | source_type | 字符串 | 来源类型，仅允许 `journal`、`conference`、`company_release`、`regulatory`、`other` |
 | published_date | 日期或 null | 来源明确发布日期、会议日期或期刊在线发表日期；无法确认时为 `null`，不得使用提取日期代替 |
 | combination_regimen | 字符串 | 标准化联合用药方案；单药也必须明确写入 |
-| clinical_match_key | 字符串 | `drug_id|combination_regimen|indication_id|phase`，用于 drug 临床记录合并；phase 缺失时 key 不完整，indexer 降级为独立追加记录（不合并） |
+| clinical_match_key | 字符串 | `drug_id|combination_regimen|indication_id|phase`，标识同一临床记录（保留字段）；drug 页表格组织以 `trial_name` 为准 |
 | companies | 数组 | 研发公司列表 |
 | phase | 字符串 | Phase I/II/III/IV；无法确定时写 `null` 并备注"待确认"，不得猜测 |
 | trial_name | 字符串 | 试验名称 |
@@ -107,8 +107,12 @@
 #### 有效性和安全性数据
 For effectiveness and safety data, present findings in **markdown table format**:
 
+**表格上方标注**：每张数据表上方必须加一行标注，只放 `source_label`（如 `ASCO2026`），不写时间、会议名或摘要编号：
+
 ```markdown
 ## 药品有效性和安全性
+
+> ASCO2026
 
 | 指标 | ABC001 | 对照组 | HR | p-value |
 |------|----------------|--------|------|------|
@@ -121,7 +125,7 @@ For effectiveness and safety data, present findings in **markdown table format**
 | 最常见AE | 恶心、血液事件（1-2级） | - | - | - |
 ```
 
-**多剂量组示例**：
+**多剂量组示例**（cohort 为列、指标为行；同一 cohort 的数据在同一列）：
 ```markdown
 | 指标 |  AAB001 2mg | AAB001 4mg | AAB001 6mg |  Placebo |
 |------|----------|--------------|--------------|--------------|
@@ -131,6 +135,13 @@ For effectiveness and safety data, present findings in **markdown table format**
 | PFS | 12.1 | 14.2 | 17.3 | 0.2 |
 | PFS p-value | <0.0001 | <0.0001 | <0.0001 | - |
 ```
+
+**表格组织原则**：
+
+1. **优先单表**：有效性、安全性、亚组数据尽量合并到同一张表（指标为行、cohort 为列），便于在 drug/ 中直接嵌入和比较。≥3 TRAE 等安全性指标作为指标行放入同一表。
+2. **分表例外**：仅当列结构无法对齐时允许分表，例如有效性数据有多个剂量组 cohort 列、而安全性数据只按总人群单列报告（Obsidian 单元格无法合并列）时，可拆为"有效性主表 + 安全性表"两张。
+3. **亚组并入主表**：亚组数据（如 PD-L1 分层、生物标志物亚组）尽量作为额外指标行并入主表（如 `cORR (TPS<1%)`），不单独成表。
+4. **多表时主表定义**：当 summary 有多个表格时，**含有效性数据的表是主表**；drug/ 只嵌入主表，安全性/亚组表不进 drug/。
 
 **表格格式规范**：
 - 表格内容第一行必须列出各组入组人数，指标列写"N"

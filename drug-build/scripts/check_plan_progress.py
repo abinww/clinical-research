@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""检查 drug-build plan 表的完成进度。
+"""检查 drug-build plan 表的完成进度（纯数据工具，不参与流程控制）。
 
 对 plan 表每一行的 URL，按三级判断确定状态：
 1. raw_dir 下是否有 frontmatter source: 匹配该 URL
 2. 该 raw 是否被 summary_dir 下的 `> 来源原文:` 引用
 3. 对应 summary 的 verification 字段是否为 passed
+
+只输出每个 URL 的状态（plan 表进度），不输出"待处理/失败项"等流程分类——
+分类由调用方（drug-build）根据状态自行决定。
 
 用法：
     python3 check_plan_progress.py --config ../config.yaml --plan {plan表路径}
@@ -163,21 +166,6 @@ def main() -> int:
     print("plan 表进度：")
     for url, status in results:
         print(f"- {url}: {status}")
-
-    pending = [url for url, status in results if status == "未提取"]
-    failed = [url for url, status in results if status in {"已提取未生成summary", "未审核"}]
-
-    if pending:
-        print("\n待处理 URL（传给 clinical-extractor）：")
-        for url in pending:
-            print(f"- {url}")
-    else:
-        print("\n待处理 URL：无")
-
-    if failed:
-        print("\n失败项（报告人工处理）：")
-        for url in failed:
-            print(f"- {url}")
 
     return 0
 

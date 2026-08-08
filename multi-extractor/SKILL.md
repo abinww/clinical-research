@@ -46,7 +46,14 @@ EXTRACTOR PREFLIGHT:
 
 ## Step 1: 身份解析
 
-读取 `../drug-identity/SKILL.md`，按其中 workflow 执行（主 agent），获取该药品的标准身份对象：
+**若调用方已提供身份对象**（drug_id、drug_aliases、target、companies、molecule_type）：
+
+- 直接使用传入值，**跳过 drug-identity 调用**。
+- 例如 drug-build 在 Step 1 已解析身份，调用本 skill 时附上身份对象。
+
+**否则**（如根 SKILL.md 直接路由、用户直接要求提取）：
+
+- 读取 `../drug-identity/SKILL.md`，按其中 workflow 执行（主 agent），获取该药品的标准身份对象：
 
 ```text
 drug_id: {按固定优先级确定}
@@ -103,7 +110,8 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 - `raw_filename`（raw 基础名，确保本次来源间唯一）
 - `source_label`（如 `ASCO2026`；本次来源间冲突时追加最短必要后缀 `_2`、`_3`，确保唯一）
-- 注明"本源主适应症"（多适应症源时），供提取单元生成主/次 summary 参考
+- `indication_id`：按 `indication-spec.md` 的规范命名对每个来源的适应症统一规范化（如 `NSCLC 1L` → `NSCLC_1L`），确保多 subagent 结果一致；治疗线无法判断时保留 `line: null`，不得猜测为 1L
+- 注明"本源主适应症"展示名（多适应症源时），供提取单元生成主/次 summary 参考
 
 ## Step 3: 并行提取
 
@@ -126,9 +134,10 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 - drug_id: {值}
 - drug_aliases: {别名列表}
 - target: {值}
+- indication_id: {规范化值}
+- 本源主适应症展示名: {值}（若含次要适应症也生成对应 summary，indication_id 按规范命名）
 - raw_filename: {值}
 - source_label: {值}
-- 本源主适应症: {值}（若含次要适应症也生成对应 summary）
 
 目录与格式（无需重新读取文件）：
 - config.yaml 路径: ../config.yaml
@@ -149,13 +158,9 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 ## Step 4: 并行验证
 
-### 4.1 扫描未审核 summary
+### 4.1 筛选待验证 summary
 
-主 agent 扫描 `{summary_dir}` 下全部 `.md` 文件，筛选出**未审核**的 summary（frontmatter `verification` 非 `passed` 或缺失）：
-
-```bash
-find ${summary_dir} -name "*.md" -type f
-```
+使用 **Step 3 汇总的本次 summary 路径列表**（不扫描全目录，避免误审其他药物的 summary），筛选出**未审核**的（frontmatter `verification` 非 `passed` 或缺失）：
 
 得到待验证 summary 列表。
 

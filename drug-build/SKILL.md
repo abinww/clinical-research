@@ -61,22 +61,22 @@ description: |
 python3 {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --plan drug/temp/search_plan_{drug_id}_{date}.md
 ```
 
-脚本输出每个 URL 的状态：
+脚本只输出每个 URL 的状态（纯数据，不做流程分类）：
 
 ```text
 plan 表进度：
 - {url}: 已完成 / 未提取 / 已提取未生成summary / 未审核
-
-待处理 URL（传给 multi-extractor）：
-- {未提取 的 URL 列表}
-
-失败项（报告人工处理）：
-- {已提取未生成summary / 未审核 的 URL 列表}
 ```
+
+由本 skill 根据状态自行分类：
+
+- **未提取** → 待处理 URL，进入 5.2 提取
+- **已提取未生成summary / 未审核** → 失败项，不重跑，记入最终报告留待人工处理
+- **已完成** → 跳过
 
 ### 5.2 调用 multi-extractor 提取待处理 URL
 
-读取 `../multi-extractor/SKILL.md`，把脚本输出的**待处理 URL**（未提取）作为多链接输入一次性传入，按其中 workflow 完整执行：
+读取 `../multi-extractor/SKILL.md`，把 5.1 分类出的**待处理 URL**（未提取）作为多链接输入一次性传入，**同时附上 Step 1 已解析的身份对象**（drug_id、drug_aliases、target、companies、molecule_type），multi-extractor 将跳过重复的 drug-identity 调用：
 
 - 多链接的并行提取、data-verify 验证、indexer 归档都由 multi-extractor 内部处理，本 skill 不重复实现
 - multi-extractor 完成：每个 URL 的 raw/ + summary/，全部 summary 经 data-verify 验证（含 FAIL 回修），并调用 clinical-indexer 归档
@@ -84,7 +84,7 @@ plan 表进度：
 
 ## Step 6: 复查完成情况
 
-再次运行 Step 5.1 的进度检查脚本，确认 plan 表剩余行状态：
+再次运行 Step 5.1 的进度检查脚本，根据状态复查：
 
 ```text
 - "未提取" → 重跑一次 multi-extractor（Step 5.2）

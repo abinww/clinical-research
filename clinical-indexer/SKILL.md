@@ -102,7 +102,7 @@ summary/{drug_id}/{文件名}.md
 说明：
 
 - `verification: passed` 已隐含审核章节存在与 FAIL=0（data-verify 仅在两者满足时写入 passed），不再单独检查。
-- `clinical_match_key` 缺失**或不完整**（含空段，如 phase 段为空）时，drug 页按"独立追加记录"降级处理（不执行合并），不阻塞归档。
+- drug 页表格按 `trial_name` 组织（同 trial 合并、不同 trial 分表）；`trial_name` 缺失时按独立表格处理（不合并），不阻塞归档。
 - 其他身份字段（source_label 等）从文件名或正文读取，不参与资格检查。
 
 ## Step 3: 计算 drug 归档缺口
@@ -170,9 +170,14 @@ missing_from_indication = summaries whose path is absent from expected_indicatio
 1. 按 summary 的 `drug_id` 字段分组。
 2. 使用 Step 3 映射中 `drug_id` 对应的文件路径作为唯一目标文件；映射中不存在时按 `drug-spec.md` 创建新文件。
 3. 文件不存在时，按 `drug-spec.md` 创建完整药品索引。
-4. 文件存在时，按 `clinical_match_key` 合并本轮 summary：匹配时补充新增指标、分组、样本量和随访，不新增重复临床记录；不匹配时追加独立记录。
+4. 文件存在时，按 `drug-spec.md` 的"临床数据汇总"规则嵌入本轮 summary 数据：
+   - **按 `indication_id` 分组**，每个适应症一个章节。
+   - **按 `trial_name` 组织表格**：不同 trial 分表；同一 trial 不同成熟度合并成一张表。
+   - **直接嵌入 summary 主表**（含有效性数据的表，指标为行、cohort 为列），不转置、不重组数值。
+   - 表格上方加 `> {source_label}` 标注行，下方加 `> 来源:` 行。
+   - 同一 trial 合并时：同一 cohort 保持同列，不同披露时间点在列内新增指标行（指标名带披露标签，如 `cORR (ELCC 2026)`）。
 5. 保留已有内容和人工补充。
-6. 同一字段数值冲突时不得静默覆盖；并列保留不同值、各自来源和“数据差异待人工确认”标记。
+6. 同一 cohort 同一披露时间出现数值冲突时不得静默覆盖；并列保留不同值、各自来源和"数据差异待人工确认"标记。
 7. 无论是否合并，都保留所有 summary 来源链接；写入前再次确认当前来源链接未存在，确保重复运行不会重复追加。
 8. 某个药品写入失败时记录错误，继续处理其他药品。
 

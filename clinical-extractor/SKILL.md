@@ -50,13 +50,13 @@ description: |
 - `drug`: 从调用方传入的 `drug_aliases` 中选取通用名作为展示名。
 - `drug_aliases`: 使用调用方传入的别名全集。
 - `target`: 使用调用方传入的值。
-- `indication_id`: 按 `indication-spec.md` 的规范命名确定（含治疗线规范化）；治疗线无法判断时保留 `line: null`，不得猜测为 1L。
+- `indication_id`: 使用调用方传入的规范化值；若实际内容适应症与传入值不符，以实际为准并在返回中说明。
 - `source_label`: 使用调用方分配的值，不自行生成。
 - `source_type`: 标准化为 `journal`、`conference`、`company_release`、`regulatory` 或 `other`。
 - `published_date`: 只记录来源明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `null`，不得用提取日期代替。
 - `combination_regimen`: 标准化联合用药方案；单药也必须明确记录。
 - `phase`: 从原文识别临床阶段（Phase I/II/III/IV）；无法确定时写 `null` 并备注"待确认"，不得猜测。
-- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成；phase 无法确定时该段留空（如 `ABC123|化疗|NSCLC_1L|`），indexer 按不完整 key 降级为独立追加记录；临床试验代码只能作为参考字段。
+- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成，标识同一临床记录（保留字段）；drug 页表格组织以 `trial_name` 为准。phase 无法确定时该段留空（如 `ABC123|化疗|NSCLC_1L|`）。临床试验代码只能作为参考字段。
 
 ## Step 2: 生成并写入 raw/
 

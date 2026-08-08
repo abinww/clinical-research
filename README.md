@@ -118,7 +118,7 @@ python -m pip install -r clinical-research/drug-trials-search/requirements.txt
 | `drug/` | 药品索引，按药品平铺，一药一文件；创建时可由任一 writer 建立基本信息，clinical-indexer 维护临床数据汇总和关键里程碑，drug-trials-search 仅维护当前临床管线 | drug-identity（骨架）、clinical-indexer、drug-trials-search |
 | `indication/` | 适应症索引，按适应症平铺 | clinical-indexer |
 | `trials/` | 临床试验注册查询的原始结果 | drug-trials-search |
-| `attachments/` | 图片附件 | clinical-extractor（多模态提取） |
+| `attachments/` | 图片附件 | multi-extractor（clinical-extractor 执行） |
 
 共享配置位于：
 
