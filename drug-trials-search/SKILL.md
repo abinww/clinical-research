@@ -90,6 +90,8 @@ cat ../schema/drug-spec.md
 - **排序**：按阶段（Phase III → II → I），同阶段按开始日期倒序
 - **⚠️ trial_id 格式**：脚本返回的 trial_id 已包含完整标识符（如 `NCT06104566`），构造 Markdown 链接时直接使用 `[{trial_id}]({url})`，**不要额外添加 `NCT` 前缀**
 
+> 药品列/对照列等字段由脚本按 CTG armGroups 生成（EXPERIMENTAL → 药品，ACTIVE_COMPARATOR/PLACEBO_COMPARATOR → 对照），agent 不得自行改写这些脚本生成字段。
+
 ### 4.4 写入
 
 将与 Step 3 完全相同的 schema 对齐表格写回 `{drug_dir}/{drug_id}.md`。只更新 `### clinicaltrials.gov` 子表，保留 `### chinadrugtrials.org.cn` 占位和人工内容不变。

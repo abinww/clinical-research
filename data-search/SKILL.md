@@ -19,7 +19,7 @@ description: |
 - ✅ 输出 plan 表，直接返回给用户或下一步调用
 - ✅ 搜不到药物代号时停下询问用户，不猜测
 - ❌ 不提取临床数据（由 `multi-extractor` 负责）
-- ❌ 不写入 `raw/`、`summary/`、`drug/`、`indication/`
+- ❌ 不写入 `raw/`、`summary/`、`drug/`、`indication/`（只读取 raw/ 的 source 字段用于排除已提取来源）
 - ❌ 不调用 `multi-extractor`
 - ❌ 不评价临床数据质量
 - ❌ 不用二手媒体数字作为数据源
@@ -100,6 +100,21 @@ python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或�
 3. 发现线索后回到 Step 3/4/5 查原始来源
 4. 二手媒体的数字一律不直接用，不作为 plan 表来源
 5. 媒体 URL 不进入 plan 表
+
+## Step 6.5: 排除已提取来源（增量建档）
+
+读取 `{raw_dir}` 下所有 `.md` 文件的 YAML frontmatter `source:` 字段，建立"已提取 URL 集合"：
+
+```bash
+grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
+```
+
+对 Step 3-6 收集的候选 URL：
+
+- **已在 raw/ 中提取过**（URL 精确匹配）→ 剔除，不进入 plan 表
+- **未提取过** → 保留，进入 Step 7
+
+这样增量建档时只搜索新增数据源，不重复收集已提取的来源。PDF 来源按文件名对比。
 
 ## Step 7: 内容判断与去重
 

@@ -151,10 +151,11 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 处理规则：
 
 - 子 agent 返回"发现重复"：由主 agent 按 Step 2.2 处理。
-- **失败重试**：某个来源失败（提取失败、空内容、非临床资料、超时）→ **立即带原因重试一次**；重试提示词附"上次失败原因 + 建议（换镜像/换提取方式）"。重试仍失败 → 记录失败项，不影响其他来源。
+- **落盘核对**：子 agent 返回"成功"后，主 agent 必须用 `ls` 核对返回的 raw/ 与 summary/ 路径是否真的存在（如 `ls {raw_dir}/{raw_filename}.md {summary_dir}/{drug_id}/{summary_filename}`）；文件不存在视为失败。
+- **失败重试**：某个来源失败（提取失败、空内容、非临床资料、超时、落盘核对不通过）→ **立即带原因重试一次**；重试提示词附"上次失败原因 + 建议（换镜像/换提取方式）"。重试仍失败 → 记录失败项，不影响其他来源。
 - **超时控制**：子 agent 单任务超时 12-15 分钟，超时自动 kill 并重试一次。
 - 全部来源处理完毕后，汇总全部 summary 路径列表，进入 Step 4。
-- **进度汇报**：每批完成时主动向用户汇报一次（"第 X/Y 批完成，N 成功 M 失败"）；失败项发现即说明处理方案，不等最终报告。
+- **进度汇报**：每批完成时主动向用户汇报一次（"第 X/Y 批完成，N 成功 M 失败"），不等用户询问；失败项发现即说明处理方案。
 
 ## Step 4: 并行验证
 
@@ -164,21 +165,22 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 得到待验证 summary 列表。
 
-### 4.2 分批并行验证
+### 4.2 并行验证
 
 ```text
-- 每轮 spawn ≤5 个 verifier 子 agent
-- 每个 verifier 负责一批 summary（建议每批 2-3 个，按 4.1 扫描结果分配）
+- summary 数量 ≤ 5 时：一次性 spawn 全部 verifier（每 summary 一个 verifier）
+- summary 数量 > 5 时：分轮，每轮 spawn ≤5 个 verifier 子 agent
+- 每个 verifier 负责 1 个 summary（独立审核，避免一个 verifier 处理多个导致遗漏）
 - 一轮完成后若还有剩余 summary，开始下一轮
 ```
 
 每个 verifier 的 prompt 必须包含：
 
 ```text
-按 data-verify/SKILL.md 验证以下 summary 列表（每个 summary 独立审核）：
-{批次内的 summary 路径列表}
-对每个 summary：读取其 `> 来源原文:` 指向的 raw 文件，写入审核章节
-与 verification 字段；返回每个 summary 的 PASS/WARN/FAIL 数量
+按 data-verify/SKILL.md 验证以下 summary：
+{单个 summary 路径}
+读取其 `> 来源原文:` 指向的 raw 文件，写入审核章节
+与 verification 字段；返回 PASS/WARN/FAIL 数量
 ```
 
 规则：

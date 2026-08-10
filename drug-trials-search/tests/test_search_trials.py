@@ -254,6 +254,98 @@ class SearchTrialsTests(unittest.TestCase):
         self.assertEqual(payload[0]["临床ID"], "NCT00000001")
         self.assertIn("查询 ClinicalTrials.gov", stderr.getvalue())
 
+    def _client(self):
+        return ClinicalTrialsGov()
+
+    def test_extract_drug_uses_experimental_arm_label_with_combo(self):
+        arms_mod = {
+            "armGroups": [
+                {"label": "HS-20093 and adebrelimab", "type": "EXPERIMENTAL",
+                 "interventionNames": ["Drug: HS-20093"]},
+                {"label": "Docetaxel", "type": "ACTIVE_COMPARATOR",
+                 "interventionNames": ["Drug: Docetaxel"]},
+            ],
+            "interventions": [
+                {"type": "DRUG", "name": "HS-20093"},
+                {"type": "DRUG", "name": "Docetaxel"},
+            ],
+        }
+        client = self._client()
+        self.assertEqual(
+            client._extract_drug_from_interventions(arms_mod, "title"),
+            "HS-20093 + adebrelimab",
+        )
+        self.assertEqual(client._extract_control_drug(arms_mod), "Docetaxel")
+
+    def test_extract_drug_supports_biological_intervention(self):
+        arms_mod = {
+            "armGroups": [
+                {"label": "Ris-Rez", "type": "EXPERIMENTAL",
+                 "interventionNames": ["Biological: Ris-Rez"]},
+                {"label": "Topotecan", "type": "ACTIVE_COMPARATOR",
+                 "interventionNames": ["Drug: Topotecan"]},
+            ],
+            "interventions": [
+                {"type": "BIOLOGICAL", "name": "Ris-Rez"},
+                {"type": "DRUG", "name": "Topotecan"},
+            ],
+        }
+        client = self._client()
+        self.assertEqual(client._extract_drug_from_interventions(arms_mod, "title"), "Ris-Rez")
+        self.assertEqual(client._extract_control_drug(arms_mod), "Topotecan")
+
+    def test_extract_drug_strips_intervention_prefix_when_label_missing(self):
+        arms_mod = {
+            "armGroups": [
+                {"type": "EXPERIMENTAL", "interventionNames": ["Drug: ABC123"]},
+                {"type": "ACTIVE_COMPARATOR", "interventionNames": ["Drug: Placebo"]},
+            ],
+            "interventions": [],
+        }
+        client = self._client()
+        self.assertEqual(client._extract_drug_from_interventions(arms_mod, "title"), "ABC123")
+        self.assertEqual(client._extract_control_drug(arms_mod), "Placebo")
+
+    def test_extract_drug_falls_back_when_no_experimental_arm(self):
+        arms_mod = {
+            "armGroups": [
+                {"label": "Docetaxel", "type": "ACTIVE_COMPARATOR",
+                 "interventionNames": ["Drug: Docetaxel"]},
+            ],
+            "interventions": [
+                {"type": "DRUG", "name": "ABC123"},
+                {"type": "DRUG", "name": "Docetaxel"},
+            ],
+        }
+        client = self._client()
+        self.assertEqual(client._extract_drug_from_interventions(arms_mod, "title"), "ABC123")
+        self.assertEqual(client._extract_control_drug(arms_mod), "Docetaxel")
+
+    def test_extract_control_returns_dash_when_no_comparator(self):
+        arms_mod = {
+            "armGroups": [
+                {"label": "HS-20093", "type": "EXPERIMENTAL",
+                 "interventionNames": ["Drug: HS-20093"]},
+            ],
+            "interventions": [{"type": "DRUG", "name": "HS-20093"}],
+        }
+        client = self._client()
+        self.assertEqual(client._extract_control_drug(arms_mod), "—")
+
+    def test_extract_drug_uses_placebo_comparator_as_control(self):
+        arms_mod = {
+            "armGroups": [
+                {"label": "ABC123", "type": "EXPERIMENTAL",
+                 "interventionNames": ["Drug: ABC123"]},
+                {"label": "Placebo", "type": "PLACEBO_COMPARATOR",
+                 "interventionNames": ["Drug: Placebo"]},
+            ],
+            "interventions": [],
+        }
+        client = self._client()
+        self.assertEqual(client._extract_drug_from_interventions(arms_mod, "title"), "ABC123")
+        self.assertEqual(client._extract_control_drug(arms_mod), "Placebo")
+
 
 if __name__ == "__main__":
     unittest.main()

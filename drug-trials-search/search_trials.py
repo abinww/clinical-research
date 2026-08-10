@@ -287,42 +287,81 @@ class ClinicalTrialsGov:
         return title[:50] if title else "—"
     
     def _extract_drug_from_interventions(self, arms_mod: dict, title: str) -> str:
-        """从干预措施中提取药品名称"""
-        # 尝试从 interventions 中提取
+        """从 armGroups 中提取试验药物（EXPERIMENTAL arm）。
+
+        规则：
+        - 只取 type == EXPERIMENTAL 的 arm
+        - 优先使用 arm label（保留完整联用信息，如 "HS-20093 and adebrelimab"），
+          把 " and " 清洗为 " + "
+        - label 不可用时用 interventionNames（剥 "Drug: "/"Biological: " 前缀）
+        - 无 EXPERIMENTAL arm 时，回退到 interventions 中非对照类型的干预名
+        """
+        arms = arms_mod.get("armGroups", arms_mod.get("arms", []))
+        experimental_arms = [a for a in arms if str(a.get("type", "")).upper() == "EXPERIMENTAL"]
+        if experimental_arms:
+            arm = experimental_arms[0]
+            label = str(arm.get("label", "")).strip()
+            if label:
+                return " + ".join(p.strip() for p in label.split(" and ") if p.strip())
+            names = self._strip_intervention_prefixes(arm.get("interventionNames", []))
+            return " + ".join(names[:3]) if names else (title[:50] if title else "—")
+
+        # 回退：interventions 中排除对照 arm 使用的干预
+        control_names = set()
+        for arm in arms:
+            if str(arm.get("type", "")).upper() in {"ACTIVE_COMPARATOR", "PLACEBO_COMPARATOR"}:
+                control_names.update(self._strip_intervention_prefixes(arm.get("interventionNames", [])))
+                label = str(arm.get("label", "")).strip()
+                if label:
+                    control_names.update(p.strip() for p in label.split(" and ") if p.strip())
         interventions = arms_mod.get("interventions", [])
-        if interventions:
-            # 查找 DRUG 类型的干预
-            drug_names = []
-            for interv in interventions:
-                if interv.get("type") == "DRUG":
-                    name = interv.get("name", "")
-                    if name and name not in drug_names and len(drug_names) < 3:
-                        drug_names.append(name)
-            if drug_names:
-                return " + ".join(drug_names)
-        
-        # 后备：从标题提取
+        drug_names = []
+        for interv in interventions:
+            name = str(interv.get("name", "")).strip()
+            if name in control_names:
+                continue
+            if name and name not in drug_names and len(drug_names) < 3:
+                drug_names.append(name)
+        if drug_names:
+            return " + ".join(drug_names)
+
         return title[:50] if title else "—"
-    
+
     def _extract_control_drug(self, arms_mod: dict) -> str:
-        """提取对照药物"""
-        # CTG API v2 使用 armGroups，兼容旧字段名 arms
+        """提取对照药物（ACTIVE_COMPARATOR / PLACEBO_COMPARATOR arm）。"""
         arms = arms_mod.get("armGroups", arms_mod.get("arms", []))
         control_drugs = []
-        
+
         for arm in arms:
-            arm_type = arm.get("type", "").lower()
-            arm_label = arm.get("label", "").lower()
-            
-            # 匹配对照组：类型包含 comparator/placebo，或标签包含 placebo
-            if "placebo" in arm_label or "comparator" in arm_type or "placebo" in arm_type:
-                # arm 对象使用 interventionNames（字符串列表），非 interventions（嵌套对象）
-                intervention_names = arm.get("interventionNames", [])
-                for name in intervention_names:
+            arm_type = str(arm.get("type", "")).upper()
+            if arm_type not in {"ACTIVE_COMPARATOR", "PLACEBO_COMPARATOR"}:
+                continue
+            label = str(arm.get("label", "")).strip()
+            names = self._strip_intervention_prefixes(arm.get("interventionNames", []))
+            # label 优先（保留完整对照方案），其次 interventionNames
+            if label:
+                for part in label.split(" and "):
+                    part = part.strip()
+                    if part and part not in control_drugs:
+                        control_drugs.append(part)
+            else:
+                for name in names:
                     if name and name not in control_drugs:
                         control_drugs.append(name)
-        
+
         return " + ".join(control_drugs[:3]) if control_drugs else "—"
+
+    @staticmethod
+    def _strip_intervention_prefixes(names: list) -> list:
+        """剥离 interventionNames 的类型前缀（"Drug: X" -> "X"）。"""
+        cleaned = []
+        for name in names or []:
+            text = str(name).strip()
+            if text.lower().startswith(("drug:", "biological:", "device:", "procedure:")):
+                text = text.split(":", 1)[1].strip()
+            if text and text not in cleaned:
+                cleaned.append(text)
+        return cleaned
     
     def _extract_primary_outcome(self, outcomes_mod: dict) -> str:
         """提取主要终点"""
