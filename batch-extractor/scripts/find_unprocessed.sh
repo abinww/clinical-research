@@ -3,8 +3,8 @@
 
 # 读取 config.yaml 获取目录路径
 CONFIG_FILE="$(dirname "$0")/../../config.yaml"
-RAW_DIR=$(grep "^raw_dir:" "$CONFIG_FILE" | sed 's/raw_dir: *//' | xargs)
-SUMMARY_DIR=$(grep "^summary_dir:" "$CONFIG_FILE" | sed 's/summary_dir: *//' | xargs)
+RAW_DIR=$(grep "^raw_dir:" "$CONFIG_FILE" | sed 's/raw_dir: *//; s/[[:space:]]*#.*$//' | xargs)
+SUMMARY_DIR=$(grep "^summary_dir:" "$CONFIG_FILE" | sed 's/summary_dir: *//; s/[[:space:]]*#.*$//' | xargs)
 
 expand_path() {
     case "$1" in
@@ -27,7 +27,7 @@ echo "  summary_dir: $SUMMARY_DIR"
 echo ""
 
 # 收集已处理的 raw 文件（从 summary/{药品}/ 各子目录的 body "> 来源原文:" 行提取）
-# 注意：摘要按药品分子目录组织，文件位于 summary/{药品名}/{药品名}@{适应症}.md
+# 注意：摘要按药品分子目录组织，文件位于 summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md
 declare -A PROCESSED
 
 # 递归遍历 summary_dir 下所有 .md 文件（跳过顶层可能存在的 INDEX.md 等清单文件）
