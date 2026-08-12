@@ -68,6 +68,13 @@ URL 来源调用:
 tavily_extract urls=<URL> extract_depth=advanced include_images=true
 ```
 
+**URL fallback 链**（按顺序尝试，直到成功）：
+
+1. 首选 `tavily_extract`（advanced，含图片）
+2. 若 `tavily_extract` 不可用/失败/被反爬 → 改用 `web_fetch` 抓取
+3. 若 `web_fetch` 403/反爬 → 返回失败并附建议（找 SEC/镜像/其他可访问来源），由调用方决定镜像替换
+4. 任何一步成功即停止，raw 只保存成功来源的完整原始输出
+
 PDF 来源优先使用:
 
 ```
@@ -108,6 +115,16 @@ write path={raw_dir}/{raw_filename}.md content={YAML frontmatter + 原始提取�
 - 如果无法保留工具原始输出,必须终止;不得用模型重建 raw。
 - 如果提取失败、正文为空、或明显不是临床资料,返回错误报告并终止后续步骤。
 
+**raw 字段补全规范**：若原始提取内容缺失关键 metadata（如 CTG 页缺失 Sponsor/Phase/Enrollment/Status），允许以**追加段**方式补全：
+
+- 在 raw 正文末尾追加补充段，格式：
+  ```markdown
+  ## 补充信息（{来源}，{获取日期}）
+  - 字段: 值
+  ```
+- **不覆盖、不修改**原始提取内容；补全段必须标注来源与获取日期
+- 补全来源优先官方 API（如 `api.clinicaltrials.gov/v2/studies/{NCT}`）
+
 ## Step 3: 生成并保存 summary/
 
 目标:从 `raw/` 生成规范化临床摘要,保存到 `summary/{drug_id}/` 子目录下。审核由 data-verify 在后续步骤完成，不在本步骤执行。
@@ -117,6 +134,8 @@ write path={raw_dir}/{raw_filename}.md content={YAML frontmatter + 原始提取�
 读取 `../schema/summary-spec.md`。
 
 基于 Step 2 写入的 `raw/` 文件生成 summary。摘要结构、字段、章节、表格均必须遵守 `summary-spec.md`。摘要的 H1 标题后必须包含 `> 来源原文: [[raw/{当前 raw 文件名}.md]]` 一行,用于在 Obsidian 中建立 direct wikilink。
+
+**不确定不写死**：研究类型、剂量设计、治疗线、适应症范围等无法从原文确认时，必须标注"未披露"或"raw 未披露"，禁止合理推断、禁止写为确定事实（如原文未提"单次剂量递增/SAD"，不得写成 SAD 设计）。
 
 生成的 summary **不包含** 数据一致性审核章节和 verification 字段（由 data-verify 在后续步骤写入），其余内容完整。
 

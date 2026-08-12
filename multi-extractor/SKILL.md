@@ -193,14 +193,17 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 
 ## Step 5: 调用 clinical-indexer
 
-spawn 1 个 agent 执行增量归档：
+spawn 1 个 agent 执行增量归档（**部分模式**）：
 
 ```text
-读取 clinical-indexer/SKILL.md，按其中增量归档 workflow 执行：
-- 扫描全部 summary/，按身份字段计算期望页面并补齐 drug/ 与 indication/
+读取 clinical-indexer/SKILL.md，按其中增量归档 workflow 执行（部分模式）：
+- 使用以下 summary 路径列表（本次新增，不扫描全目录）：
+  {本次 summary 路径列表}
+- 按身份字段计算期望页面并补齐 drug/ 与 indication/
 - 返回归档统计
 ```
 
+- 归档完成后，主 agent 用 `ls` 核对 `drug/{drug_id}.md` 与相关 indication/ 页面是否实际更新；未更新视为归档失败。
 - 若 indexer 归档失败，报告 `summary/` 已生成但索引未更新；不回滚已写入的 `summary/` 文件。
 
 ## Step 6: 输出报告

@@ -78,11 +78,13 @@ plan 表进度：
 
 根据 5.1 的状态输出，向用户展示**状态为"未提取"的行**：
 
+- 必须以 markdown 表格形式**完整输出**到用户可见消息（不得只写概要或省略行）。
+
 ```text
 本次将入库以下数据来源：
 | # | 临床代码或NCT编号 | 适应症 | 临床阶段 | 来源类型 | 数据截止日 | 网址链接 | 备注 |
 |---|------------------|--------|---------|---------|-----------|---------|------|
-| ...（未提取的行）... |
+| ...（未提取的行，完整列出）... |
 
 共 N 个来源待提取。将自动开始提取；如需增删来源可随时告知。
 ```
@@ -95,7 +97,7 @@ plan 表进度：
 读取 `../multi-extractor/SKILL.md`，把 5.1 分类出的**待处理 URL**（未提取）作为多链接输入一次性传入，**同时附上 Step 1 已解析的身份对象**（drug_id、drug_aliases、target、companies、molecule_type），multi-extractor 将跳过重复的 drug-identity 调用：
 
 - 多链接的并行提取、data-verify 验证、indexer 归档都由 multi-extractor 内部处理，本 skill 不重复实现
-- multi-extractor 完成：每个 URL 的 raw/ + summary/，全部 summary 经 data-verify 验证（含 FAIL 回修），并调用 clinical-indexer 归档
+- multi-extractor 完成：每个 URL 的 raw/ + summary/，全部 summary 经 data-verify 验证（含 FAIL 回修），并调用 clinical-indexer 以**部分模式**归档本次 summary（不扫描全库）
 - 收集 multi-extractor 的返回结果（提取数、验证汇总、归档结果、失败项）
 
 ## Step 6: 复查完成情况

@@ -42,7 +42,22 @@ Cron 直接调用时必须：
 
 Cron 调用提示词应明确要求直接执行本文件，不要只发送“更新索引”等模糊指令。
 
-两种调用都遵守相同的幂等规则：只有当 summary 来源链接已存在于按身份字段计算出的期望 drug 页面和期望 indication 页面时，该维度才跳过；链接出现在其他页面不算已归档。
+## 调用模式
+
+本 skill 支持两种扫描模式，执行同一套增量归档 workflow：
+
+### 全量模式（默认）
+
+- 扫描 `summary/` 下全部 summary，分别补齐 drug/ 与 indication/。
+- 用于 cron 定时、用户手动整理、扫描未整理数据。
+
+### 部分模式（drug-build / multi-extractor 调用）
+
+- 调用方传入**本次 summary 路径列表**，只扫描并归档这些 summary。
+- 同样计算 drug/ 与 indication/ 归档缺口，幂等规则不变（只处理缺失来源链接的项）。
+- 节省全量扫描时间：建库时无需读取全库 summary。
+
+两种模式都遵守相同的幂等规则：只有当 summary 来源链接已存在于按身份字段计算出的期望 drug 页面和期望 indication 页面时，该维度才跳过；链接出现在其他页面不算已归档。
 
 ## 定位与约束
 
@@ -72,15 +87,17 @@ Cron 调用提示词应明确要求直接执行本文件，不要只发送“更
 
 如果任一文件或目录配置无法读取，停止执行并报告原因。
 
-## Step 2: 扫描全部 summary
+## Step 2: 扫描 summary
 
-扫描各药品子目录下的摘要文件：
+**全量模式**：扫描各药品子目录下的摘要文件：
 
 ```bash
 find ${summary_dir} -mindepth 2 -name "*.md" -type f
 ```
 
-跳过 `summary_dir/INDEX.md` 等顶层文件。每个 summary 的唯一标识是相对于数据根目录的路径：
+**部分模式**：使用调用方传入的 summary 路径列表（drug-build / multi-extractor 本次新增的 summary），跳过全量扫描。
+
+两种模式都跳过 `summary_dir/INDEX.md` 等顶层文件。每个 summary 的唯一标识是相对于数据根目录的路径：
 
 ```text
 summary/{drug_id}/{文件名}.md
@@ -193,11 +210,12 @@ missing_from_indication = summaries whose path is absent from expected_indicatio
 
 1. 按 summary 的 `indication_id` 字段分组。
 2. 使用 `indication/{indication_id}.md` 作为唯一目标文件。
-3. 文件不存在时，按 `indication-spec.md` 创建完整适应症索引。
-4. 文件存在时，按 summary 的 `indication_id` 归档药品数据和来源链接；不删除旧来源。
-5. 保留已有内容和人工补充。
-6. 写入前再次确认来源链接未存在，确保重复运行不会重复追加。
-7. 某个适应症写入失败时记录错误，继续处理其他适应症。
+3. **泛瘤种跳过**：`indication_id` 属于 `indication-spec.md` "建档范围" 列出的探索性泛瘤种（实体瘤、多瘤种、泛瘤种、晚期实体瘤、晚期恶性肿瘤）时，跳过该 indication 页的创建与更新（drug/ 维度正常归档）。
+4. 文件不存在时，按 `indication-spec.md` 创建完整适应症索引。
+5. 文件存在时，按 summary 的 `indication_id` 归档药品数据和来源链接；不删除旧来源。
+6. 保留已有内容和人工补充。
+7. 写入前再次确认来源链接未存在，确保重复运行不会重复追加。
+8. 某个适应症写入失败时记录错误，继续处理其他适应症。
 
 ## Step 7: 输出报告
 

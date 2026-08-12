@@ -23,6 +23,7 @@ description: |
 - ✅ 只修改 summary 末尾的 `## 数据一致性审核` 章节和 YAML 的 `verification` / `verification_fail_count` 字段（需要该 summary 文件的写权限）
 - ✅ 不自己扫描 summary/ 目录（扫描由调用方 multi-extractor 统一完成，避免并发重复审核）
 - ❌ 不修改 summary 正文（核心数据、图片、试验设计、专家点评等章节）
+- ❌ **不审核专家点评章节**：专家点评仅作参考，不在审核范围内；只审核有效性和安全性数据
 - ❌ 不联网
 - ❌ 不补充新数据
 - ❌ 不评价临床价值
