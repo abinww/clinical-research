@@ -186,8 +186,9 @@ missing_from_indication = summaries whose path is absent from expected_indicatio
 
 1. 按 summary 的 `drug_id` 字段分组。
 2. 使用 Step 3 映射中 `drug_id` 对应的文件路径作为唯一目标文件；映射中不存在时按 `drug-spec.md` 创建新文件。
-3. 文件不存在时，按 `drug-spec.md` 创建完整药品索引。
+3. 文件不存在时，按 `drug-spec.md` 创建药品索引骨架（frontmatter + `## 基本信息`；`## 当前临床管线` 留空，不在本步骤填充）。
 4. 文件存在时，按 `drug-spec.md` 的"临床数据汇总"规则嵌入本轮 summary 数据：
+   - **只写 `## 临床数据汇总` 和 `## 关键里程碑`**；**不创建、不填充 `## 当前临床管线` 章节**。
    - **按 `indication_id` 分组**，每个适应症一个章节。
    - **按 `trial_name` 组织表格**：不同 trial 分表；同一 trial 不同成熟度合并成一张表。
    - **直接嵌入 summary 主表**（含有效性数据的表，指标为行、cohort 为列），不转置、不重组数值。

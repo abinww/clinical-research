@@ -103,8 +103,9 @@ molecule_type: {ADC/双抗/单抗/小分子}
 - **文件不存在**：只创建 YAML frontmatter 和 `## 基本信息`，**不补全后续临床章节**：
   - frontmatter：`drug_id`、`drug`（从 drug_aliases 选取通用名）、`drug_aliases`、`target`、`companies`、`created`、`updated`
   - `## 基本信息`（身份对象字段）
-  - 其他章节（临床数据汇总、关键里程碑、当前临床管线）留空占位即可，由后续 multi-extractor / drug-trials-search 按需补充
+  - 其他章节（临床数据汇总、关键里程碑、当前临床管线）**不得创建或填充**（即使 drug-spec.md 定义了这些章节格式）；由各章节负责的 writer 按需补充
 - **文件已存在**：不覆盖现有内容，只补充缺失的 frontmatter 字段（如新增别名并入 `drug_aliases`），更新 `updated` 日期。
+- **创建失败处理**：若 `drug/{drug_id}.md` 骨架创建失败（写入失败、目录不可写等），停止执行并返回错误报告；不得静默返回身份对象、不得让调用方继续以为骨架已存在。
 
 幂等规则：
 
