@@ -41,7 +41,7 @@ CTG 查询时使用 `drug_id` 及 `drug_aliases` 中的主要别名作为查询�
 
 调用 Python 脚本：
 ```bash
-python3 {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适应症>"] --source ctg --format pipeline-markdown
+python {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适应症>"] --source ctg --format pipeline-markdown
 ```
 
 脚本使用 clinicaltrials.gov 官方 API，负责字段提取、治疗方案整理、注册国家去重、排序和 schema 对齐的 Markdown 渲染。agent 不得从 API 原始数据自行提取、补全或改写临床字段。
@@ -61,8 +61,8 @@ python3 {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适
 ### 4.1 读取格式规范
 
 管线表格的列定义、链接格式、排序规则等全部以 drug-spec.md 为准：
-```bash
-cat ../schema/drug-spec.md
+```text
+使用 `read` 工具读取 `../schema/drug-spec.md`。
 ```
 关注「当前临床管线」章节的格式要求。
 

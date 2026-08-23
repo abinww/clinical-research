@@ -5,10 +5,11 @@ import argparse
 import json
 import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from typing import Optional
-
-import requests
 
 
 def display_value(value: object) -> str:
@@ -142,11 +143,14 @@ class ClinicalTrialsGov:
     
     def __init__(self, timeout: int = 30):
         self.timeout = timeout
-        self.session = requests.Session()
-        self.session.headers.update({
+        self.headers = {
             "Accept": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        })
+        }
+
+    @staticmethod
+    def _open(request: urllib.request.Request, timeout: int):
+        return urllib.request.urlopen(request, timeout=timeout)
     
     def search(self, drug: str, indication: Optional[str] = None,
                sponsor: Optional[str] = None,
@@ -182,13 +186,17 @@ class ClinicalTrialsGov:
         results = []
         try:
             while max_results is None or len(results) < max_results:
-                response = self.session.get(
-                    self.BASE_URL,
-                    params=params,
-                    timeout=self.timeout
+                query = urllib.parse.urlencode(params)
+                request = urllib.request.Request(
+                    f"{self.BASE_URL}?{query}", headers=self.headers
                 )
-                response.raise_for_status()
-                data = response.json()
+                with self._open(request, self.timeout) as response:
+                    if response.status < 200 or response.status >= 300:
+                        raise urllib.error.HTTPError(
+                            request.full_url, response.status, response.reason,
+                            response.headers, None
+                        )
+                    data = json.loads(response.read().decode("utf-8"))
                 page_results = self._parse_results(data)
                 remaining = None if max_results is None else max_results - len(results)
                 results.extend(page_results if remaining is None else page_results[:remaining])
@@ -199,7 +207,7 @@ class ClinicalTrialsGov:
                 params["pageToken"] = next_token
 
             return results
-        except requests.RequestException as e:
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
             print(f"[ERROR] clinicaltrials.gov API 请求失败: {e}", file=sys.stderr)
             return []
     

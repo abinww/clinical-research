@@ -34,8 +34,10 @@ description: |
 
 扫描 `{drug_dir}` 下所有 `.md` 文件的 YAML frontmatter：
 
-```bash
-find ${drug_dir} -name "*.md" -type f
+使用以下 Python 脚本查找 `${drug_dir}` 下的 `*.md` 文件：
+
+```text
+python {clinical_research_dir}/scripts/scan_sources.py --dir ${drug_dir} --format files
 ```
 
 匹配键（任一命中即视为同一药品）：
@@ -124,4 +126,3 @@ drug-identity: {名称} → drug_id: {drug_id}
 - molecule_type: {类型}
 - drug/ 文件: {drug_dir}/{drug_id}.md（新建/已存在）
 ```
-

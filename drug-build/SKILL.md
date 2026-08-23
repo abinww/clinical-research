@@ -57,8 +57,8 @@ description: |
 
 ### 5.1 运行进度检查脚本
 
-```bash
-python3 {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --plan drug/temp/search_plan_{drug_id}_{date}.md
+```text
+python {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --plan drug/temp/search_plan_{drug_id}_{date}.md
 ```
 
 脚本只输出每个 URL 的状态（纯数据，不做流程分类）：

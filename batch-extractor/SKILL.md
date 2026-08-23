@@ -13,10 +13,14 @@ description: |
 
 ## Step 1: 扫描未处理文件
 
+其中 `{clinical_research_dir}` 指包含顶层 `SKILL.md` 的 `clinical-research/` 目录，不是当前子 skill 目录。
+
 调用：
 ```
-exec command="bash scripts/find_unprocessed.sh"
+exec command="python {clinical_research_dir}/scripts/find_unprocessed.py --config {clinical_research_dir}/config.yaml"
 ```
+
+该脚本使用 Python 标准库，支持 Debian/Ubuntu 和 Windows 10/11，不依赖 Bash。
 
 **脚本输出解析**：
 - 列出所有未处理的 raw/ 文件
@@ -40,7 +44,7 @@ exec command="bash scripts/find_unprocessed.sh"
 
 调用：
 ```
-mkdir -p {summary_dir}/{药品名}
+exec command="python {clinical_research_dir}/scripts/ensure_directories.py \"{summary_dir}/{药品名}\""
 write path={summary_dir}/{药品名}/{文件名}.md content={摘要内容}
 ```
 

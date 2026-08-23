@@ -75,17 +75,18 @@ tavily_extract urls=<URL> extract_depth=advanced include_images=true
 3. 若 `web_fetch` 403/反爬 → 返回失败并附建议（找 SEC/镜像/其他可访问来源），由调用方决定镜像替换
 4. 任何一步成功即停止，raw 只保存成功来源的完整原始输出
 
-PDF 来源优先使用:
+PDF 来源按以下顺序处理：
 
-```
-pdftotext <pdf路径> -
-```
+1. 优先使用当前 harness 的 PDF 读取能力或系统中的 `pdftotext`。
+2. 不可用或效果差时使用 `nano-pdf`。
+3. 最后尝试标准库 fallback：
 
-如果 `pdftotext` 不可用或效果差,再使用:
-
-```
+```text
 nano-pdf --file <pdf路径> --action read
+python {clinical_research_dir}/scripts/pdf_extract_fallback.py <pdf路径>
 ```
+
+标准库 fallback 只支持有限的、未加密文本 PDF，不能保证中文、表格或扫描型 PDF 的结果。若以上方式均不可用或失败，必须报告 PDF 无法提取，不得由模型重建 raw 正文。
 
 ### 2.2 写入 raw 文件
 
@@ -157,7 +158,7 @@ SUMMARY WRITE GATE:
 写入前必须确保子目录存在:
 
 ```
-mkdir -p {summary_dir}/{drug_id}
+python {clinical_research_dir}/scripts/ensure_directories.py "{summary_dir}/{drug_id}"
 write path={summary_dir}/{drug_id}/{summary_filename} content={符合 summary-spec.md 的完整 summary 内容}
 ```
 

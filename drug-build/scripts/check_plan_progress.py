@@ -10,7 +10,7 @@
 分类由调用方（drug-build）根据状态自行决定。
 
 用法：
-    python3 check_plan_progress.py --config ../config.yaml --plan {plan表路径}
+    python check_plan_progress.py --config ../config.yaml --plan {plan表路径}
 
 纯标准库实现，无第三方依赖。
 """

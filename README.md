@@ -53,11 +53,7 @@ git clone https://github.com/abinww/clinical-research.git
 {skill_root}/clinical-research/
 ```
 
-如需查询 ClinicalTrials.gov，安装查询脚本依赖：
-
-```bash
-python -m pip install -r clinical-research/drug-trials-search/requirements.txt
-```
+查询 ClinicalTrials.gov 的脚本只使用 Python 标准库，不需要安装第三方 Python 依赖。
 
 ### 首次初始化
 

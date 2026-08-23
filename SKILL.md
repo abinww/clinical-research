@@ -8,6 +8,8 @@ description: |
 
 ## ⚠️ 执行约束（触发后必须遵守）
 
+文档中的 `{clinical_research_dir}` 指包含本文件的顶层 `clinical-research/` 目录，不是当前正在执行的子 skill 目录。
+
 ### 初始化检查
 0. **先检查当前 skill 目录下是否存在 `config.yaml`**：
    - 如果存在：读取配置，并继续执行后续路由流程。

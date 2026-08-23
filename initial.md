@@ -67,7 +67,7 @@ attachments_dir: {data_dir}/attachments  # 图片附件存放目录
 
 配置文件必须保存绝对路径。若用户选择默认目录，先解析为当前环境的绝对用户目录路径后再写入配置；不要把 `~` 原样写入 YAML。
 
-例如，默认目录解析为 `/home/<user>/clinical` 时，配置应为：
+例如，Linux 默认目录解析为 `/home/<user>/clinical` 时，配置应为：
 
 ```yaml
 # clinical-research 数据目录配置
@@ -85,24 +85,15 @@ trials_dir: /home/<user>/clinical/trials        # 临床试验查询结果存放
 attachments_dir: /home/<user>/clinical/attachments  # 图片附件存放目录
 ```
 
+Windows 10/11 应写入绝对路径，推荐使用正斜杠，例如 `C:/Users/<user>/clinical`，不要依赖 Bash 的 `$HOME` 展开。
+
 如果 `config.yaml` 已经存在，说明可能已经初始化过。此时不要直接覆盖，应先询问用户是否要重新生成配置。
 
 ### 3. 创建数据目录
 
 创建数据目录及其子目录。
 
-如果使用默认目录：
-
-```bash
-mkdir -p ~/clinical/raw
-mkdir -p ~/clinical/summary
-mkdir -p ~/clinical/drug
-mkdir -p ~/clinical/indication
-mkdir -p ~/clinical/trials
-mkdir -p ~/clinical/attachments
-```
-
-在 Windows PowerShell 中可使用：
+使用 harness 的目录创建能力创建上述目录。Windows PowerShell 中也可使用：
 
 ```powershell
 New-Item -ItemType Directory -Force `

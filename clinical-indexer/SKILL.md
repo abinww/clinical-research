@@ -91,8 +91,10 @@ Cron 调用提示词应明确要求直接执行本文件，不要只发送“更
 
 **全量模式**：扫描各药品子目录下的摘要文件：
 
-```bash
-find ${summary_dir} -mindepth 2 -name "*.md" -type f
+```text
+使用以下 Python 脚本查找 `${summary_dir}` 下至少两层目录中的 `*.md` 文件：
+
+python {clinical_research_dir}/scripts/scan_sources.py --dir ${summary_dir} --format files --min-depth 1
 ```
 
 **部分模式**：使用调用方传入的 summary 路径列表（drug-build / multi-extractor 本次新增的 summary），跳过全量扫描。
@@ -126,8 +128,10 @@ summary/{drug_id}/{文件名}.md
 
 递归扫描 `drug_dir` 下所有药品索引文件（包括子文件夹），按 frontmatter `drug_id` 建立映射：
 
-```bash
-find ${drug_dir} -name "*.md" -type f
+```text
+使用以下 Python 脚本查找 `${drug_dir}` 下的 `*.md` 文件：
+
+python {clinical_research_dir}/scripts/scan_sources.py --dir ${drug_dir} --format files
 ```
 
 ```text

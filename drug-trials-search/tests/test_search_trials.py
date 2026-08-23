@@ -1,23 +1,7 @@
 import io
 import sys
-import types
 import unittest
 from unittest.mock import patch
-
-
-class _RequestsStub:
-    class RequestException(Exception):
-        pass
-
-    class Session:
-        def __init__(self):
-            self.headers = {}
-
-        def update(self, _headers):
-            pass
-
-
-sys.modules.setdefault("requests", _RequestsStub)
 
 import search_trials
 from search_trials import (
@@ -176,6 +160,18 @@ class SearchTrialsTests(unittest.TestCase):
         class Response:
             def __init__(self, payload):
                 self.payload = payload
+                self.status = 200
+                self.reason = "OK"
+                self.headers = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return __import__("json").dumps(self.payload).encode("utf-8")
 
             def raise_for_status(self):
                 pass
@@ -183,30 +179,39 @@ class SearchTrialsTests(unittest.TestCase):
             def json(self):
                 return self.payload
 
-        class Session:
-            def __init__(self):
-                self.headers = {}
-                self.calls = []
-
-            def get(self, _url, params, timeout):
-                self.calls.append(params.copy())
-                if len(self.calls) == 1:
-                    return Response({"studies": [{}], "nextPageToken": "page-2"})
-                return Response({"studies": [{}]})
-
         client = ClinicalTrialsGov()
-        client.session = Session()
+        calls = []
+
+        def open_request(_request, _timeout):
+            calls.append(True)
+            if len(calls) == 1:
+                return Response({"studies": [{}], "nextPageToken": "page-2"})
+            return Response({"studies": [{}]})
+
+        client._open = open_request
         client._parse_results = lambda payload: [payload["studies"][0]]
 
         results = client.search("ABC123", max_results=2)
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(client.session.calls[1]["pageToken"], "page-2")
+        self.assertEqual(len(calls), 2)
 
     def test_search_follows_all_pages_when_max_results_is_omitted(self):
         class Response:
             def __init__(self, payload):
                 self.payload = payload
+                self.status = 200
+                self.reason = "OK"
+                self.headers = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return __import__("json").dumps(self.payload).encode("utf-8")
 
             def raise_for_status(self):
                 pass
@@ -214,25 +219,22 @@ class SearchTrialsTests(unittest.TestCase):
             def json(self):
                 return self.payload
 
-        class Session:
-            def __init__(self):
-                self.headers = {}
-                self.calls = []
-
-            def get(self, _url, params, timeout):
-                self.calls.append(params.copy())
-                if len(self.calls) == 1:
-                    return Response({"studies": [{}], "nextPageToken": "page-2"})
-                return Response({"studies": [{}]})
-
         client = ClinicalTrialsGov()
-        client.session = Session()
+        calls = []
+
+        def open_request(_request, _timeout):
+            calls.append(True)
+            if len(calls) == 1:
+                return Response({"studies": [{}], "nextPageToken": "page-2"})
+            return Response({"studies": [{}]})
+
+        client._open = open_request
         client._parse_results = lambda payload: [payload["studies"][0]]
 
         results = client.search("ABC123")
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(len(client.session.calls), 2)
+        self.assertEqual(len(calls), 2)
 
     def test_json_format_writes_only_json_to_stdout(self):
         trial = TrialResult()

@@ -54,8 +54,8 @@ molecule_type: {ADC/双抗/单抗/小分子}
 
 1. 复用 `drug-trials-search` 脚本查 ClinicalTrials.gov，使用身份对象中的 `drug_id` 或主要别名作为查询词：
 
-```bash
-python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或主要别名}" --format json
+```text
+python {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或主要别名}" --format json
 ```
 
 2. 从 JSON 结果中提取 NCT 编号、阶段、适应症、状态清单，作为后续搜索的索引骨架。
@@ -87,7 +87,7 @@ python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或�
 
 1. PubMed 检索：`{drug}` 或 `{drug} {indication}`
 
-```bash
+```text
 搜索 site:pubmed.ncbi.nlm.nih.gov {drug}
 ```
 
@@ -106,8 +106,8 @@ python3 {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或�
 
 读取 `{raw_dir}` 下所有 `.md` 文件的 YAML frontmatter `source:` 字段，建立"已提取 URL 集合"：
 
-```bash
-grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
+```text
+python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --format urls
 ```
 
 对 Step 3-6 收集的候选 URL：

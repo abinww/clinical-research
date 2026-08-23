@@ -103,13 +103,15 @@ git -C {skill_root}/clinical-research pull
 {skill_root}/clinical-research/
 ```
 
-### 3.1 安装临床试验查询依赖
+### 3.1 检查 Python
 
-如需使用 `drug-trials-search` 查询 ClinicalTrials.gov，安装其 Python 依赖：
+`drug-trials-search` 和共享扫描脚本只使用 Python 标准库。确认当前环境可执行 Python 3.10+：
 
-```bash
-python -m pip install -r {skill_root}/clinical-research/drug-trials-search/requirements.txt
+```text
+python --version
 ```
+
+Windows 10/11 和 Debian/Ubuntu 均可使用 `python` 命令；如果当前系统仅提供 `python3`，由 harness 将 Python 命令映射为 `python3`。
 
 ### 4. 检查安装完整性
 

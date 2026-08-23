@@ -82,8 +82,8 @@ molecule_type: {ADC/双抗/单抗/小分子}
 
 扫描 `{raw_dir}` 下所有 `.md` 文件的 YAML frontmatter `source:` 字段，与本次来源对比：
 
-```bash
-grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
+```text
+python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --format urls
 ```
 
 去重规则：
@@ -102,7 +102,7 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 对每个待提取 URL 做轻量可达性探测（HEAD 请求或 basic fetch）：
 
 - 404/403/连接失败 → 立即标记为失败项（尝试找同文镜像，找不到则剔除），不进入提取队列。
-- PDF 来源先 `pdftotext` 试提取 → 空输出（纯图片 PDF）提前标记，避免 subagent 白跑。
+- PDF 来源不在预检阶段提前提取。将每个 PDF 直接分配给一个 `clinical-extractor` subagent，由该 subagent 完成一次提取和 fallback；这样多 PDF 来源不会重复提取。
 
 ### 2.4 分配来源身份
 
@@ -151,7 +151,7 @@ grep -h "^source:" {raw_dir}/*.md | sed 's/source: *//' | tr -d '"' | sort -u
 处理规则：
 
 - 子 agent 返回"发现重复"：由主 agent 按 Step 2.2 处理。
-- **落盘核对**：子 agent 返回"成功"后，主 agent 必须用 `ls` 核对返回的 raw/ 与 summary/ 路径是否真的存在（如 `ls {raw_dir}/{raw_filename}.md {summary_dir}/{drug_id}/{summary_filename}`）；文件不存在视为失败。
+- **落盘核对**：子 agent 返回"成功"后，主 agent 必须用 harness 的文件存在检查工具核对返回的 raw/ 与 summary/ 路径是否真的存在；文件不存在视为失败。
 - **失败重试**：某个来源失败（提取失败、空内容、非临床资料、超时、落盘核对不通过）→ **立即带原因重试一次**；重试提示词附"上次失败原因 + 建议（换镜像/换提取方式）"。重试仍失败 → 记录失败项，不影响其他来源。
 - **超时控制**：子 agent 单任务超时 12-15 分钟，超时自动 kill 并重试一次。
 - 全部来源处理完毕后，汇总全部 summary 路径列表，进入 Step 4。
@@ -203,7 +203,7 @@ spawn 1 个 agent 执行增量归档（**部分模式**）：
 - 返回归档统计
 ```
 
-- 归档完成后，主 agent 用 `ls` 核对 `drug/{drug_id}.md` 与相关 indication/ 页面是否实际更新；未更新视为归档失败。
+- 归档完成后，主 agent 用 harness 的文件存在检查工具核对 `drug/{drug_id}.md` 与相关 indication/ 页面是否实际更新；未更新视为归档失败。
 - 若 indexer 归档失败，报告 `summary/` 已生成但索引未更新；不回滚已写入的 `summary/` 文件。
 
 ## Step 6: 输出报告
