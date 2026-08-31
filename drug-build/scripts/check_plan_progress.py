@@ -35,6 +35,7 @@ from scan_sources import (  # noqa: E402
     read_frontmatter,
     source_path,
     summary_audit_passed,
+    summary_identity_valid,
     summary_indication_ids,
     summary_indications,
 )
@@ -240,7 +241,9 @@ def check_url(
     except (OSError, UnicodeError):
         return "已提取未生成summary"
 
-    if summary_audit_passed(summary_content, require_verification_coverage):
+    if summary_identity_valid(summary_content, summaries[0]) and summary_audit_passed(
+        summary_content, require_verification_coverage
+    ):
         return "已完成" if _indexed_for_summary(root, summaries[0], summary_content) else "已验证未索引"
     return "未审核"
 

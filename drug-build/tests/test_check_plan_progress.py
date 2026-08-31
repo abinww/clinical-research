@@ -51,13 +51,14 @@ class CheckPlanProgressTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "研究"
             drug = make_drug(root, "公司甲", "药甲")
-            raw = drug / "raw" / "试验 原文.md"
+            raw = drug / "raw" / "药甲@Trial.md"
             raw.write_text("---\nsource: https://example.test/trial\n---\n原文\n", encoding="utf-8-sig")
-            summary = drug / "summary" / "试验 原文.md"
+            summary = drug / "summary" / "药甲@Trial.md"
             summary.write_text(
-                "---\nverification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
+                "---\ndrug_id: 药甲\nsource_label: Trial\narchive_company: 公司甲\n"
+                "verification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
                 "indications:\n  - indication_id: NSCLC_1L\n    indication: NSCLC 一线\n---\n"
-                "> 来源原文: [试验原文](../raw/试验%20原文.md)\n"
+                "> 来源原文: [试验原文](../raw/%E8%8D%AF%E7%94%B2@Trial.md)\n"
                 "## [NSCLC_1L] NSCLC 一线\n\n### 核心数据\n\n"
                 "## 数据一致性审核\n\n| indication_id | 数据项 | 状态 |\n|---|---|---|\n"
                 "| NSCLC_1L | ORR | PASS |\n",
@@ -66,7 +67,7 @@ class CheckPlanProgressTests(unittest.TestCase):
 
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已验证未索引")
             (drug / "药甲.md").write_text(
-                "<!-- source_identity: 公司甲/药甲/summary/试验 原文.md -->\n", encoding="utf-8"
+                "<!-- source_identity: 公司甲/药甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
             )
             index = root / "index.md"
             index.write_text(
@@ -84,7 +85,7 @@ class CheckPlanProgressTests(unittest.TestCase):
             indication = root / "indication" / "NSCLC_1L.md"
             indication.parent.mkdir()
             indication.write_text(
-                "<!-- source_identity: 公司甲/药甲/summary/试验 原文.md -->\n", encoding="utf-8"
+                "<!-- source_identity: 公司甲/药甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
             )
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已完成")
             indication.unlink()
@@ -120,7 +121,7 @@ class CheckPlanProgressTests(unittest.TestCase):
             "|---|---|---|---|---|\n| NSCLC_1L | ORR | 42% | text | PASS |\n"
         )
         self.assertTrue(progress.summary_audit_passed(valid))
-        self.assertTrue(progress.summary_audit_passed(valid.replace("verification_fail_count: 0", "verification_fail_count: '0'")))
+        self.assertFalse(progress.summary_audit_passed(valid.replace("verification_fail_count: 0", "verification_fail_count: '0'")))
         self.assertFalse(progress.summary_audit_passed(valid.replace("verification_fail_count: 0", "verification_fail_count: null")))
         self.assertFalse(progress.summary_audit_passed(valid.replace("verification_fail_count: 0", "verification_fail_count: 0\nverification_fail_count: 0")))
         self.assertFalse(progress.summary_audit_passed(valid.replace("verification: passed", "verification: passed\nverification: failed")))

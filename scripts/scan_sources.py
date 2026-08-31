@@ -108,6 +108,9 @@ def summary_audit_passed(text: str, require_verification_coverage: bool = True) 
         return False
     if verification != "passed" or fail_count != "0":
         return False
+    fail_count_lines = re.findall(r"^verification_fail_count\s*:\s*(.*?)\s*$", frontmatter, re.MULTILINE)
+    if len(fail_count_lines) != 1 or fail_count_lines[0].strip() != "0":
+        return False
     if require_verification_coverage and coverage != "complete":
         return False
 
@@ -149,6 +152,33 @@ def summary_audit_passed(text: str, require_verification_coverage: bool = True) 
         and bool(expected_indications)
         and audited_indications == expected_indications
     )
+
+
+def summary_identity_valid(text: str, summary_path: str | Path) -> bool:
+    """Validate the scalar identity fields that bind a summary to its path."""
+    frontmatter = read_frontmatter(text)
+    try:
+        drug_id = frontmatter_value(frontmatter, "drug_id")
+        source_label = frontmatter_value(frontmatter, "source_label")
+        archive_company = frontmatter_value(frontmatter, "archive_company")
+    except ValueError:
+        return False
+    path = Path(summary_path)
+    if not drug_id or not source_label or not archive_company:
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", source_label):
+        return False
+    if path.name != f"{drug_id}@{source_label}.md":
+        return False
+    if path.parent.name != "summary" or path.parent.parent.name != drug_id:
+        return False
+    if path.parent.parent.parent.name != archive_company:
+        return False
+    try:
+        indications = summary_indications(text)
+    except ValueError:
+        return False
+    return bool(indications)
 
 
 def summary_indication_ids(text: str) -> list[str]:

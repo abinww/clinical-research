@@ -1,81 +1,57 @@
 ---
-name: clinical-batch-extractor
+name: batch-extractor
 description: |
   扫描 clinical-research 2.0 布局中尚无 summary 引用的 raw，
   按药物身份与路径上下文批量生成、独立验证并索引摘要。
 ---
 
-# 批量处理 - 2.0
+# 临床数据批量处理
 
-> 处理已存在的 raw。不得重新抓取来源、改写 raw，或使用 v1 目录和命名兼容逻辑。
+## 职责与边界
 
-## Step 1: 预检
+本 skill 扫描现有 raw，批量生成 summary、独立验证并索引。不得重新抓取来源、改写 raw，或使用 v1 目录和命名兼容逻辑。
 
-读取 `config.yaml`，只获取 `research_dir`；同时读取 `summary-spec.md`、`drug-identity/SKILL.md`、`data-verify/SKILL.md` 和 `clinical-indexer/SKILL.md`。`{clinical_research_dir}` 是包含顶层 `SKILL.md` 的 skill 目录。
+## 输入与共享契约
 
-扫描命令必须使用跨平台 Python 脚本：
+- `{clinical_research_dir}` 是包含顶层 `SKILL.md` 的目录。`config.yaml` 只提供绝对 `research_dir`。
+- 身份对象和路径以 `../drug-identity/SKILL.md` 为权威；summary 格式以 `../schema/summary-spec.md` 为权威；索引资格以 `../clinical-indexer/SKILL.md` 的完整门禁为准。
+- 读取上述契约、`data-verify/SKILL.md` 和相关 schema 后再处理。
+- 输入模式二选一：`scan`（默认，可带 `company_id`、`drug_id` 过滤器）或 `single_raw`（调用方提供一个 raw 绝对路径，只处理该文件）。
+
+## 不变量与写边界
+
+- 一个 raw 只创建一个同名 summary，不因多适应症拆分。
+- summary 严格 create-only，不覆盖、不追加序号、不写旧式 wikilink；生成阶段审核状态固定为 `pending/null/null`。
+- verifier 必须独立于生成者，不联网、不修改正文。
+- 每个 summary 对药品页只索引一次，并将同一来源派发到全部合格适应症页。
+
+## 工作流
+
+1. **确定待处理 raw。** `single_raw` 模式直接校验并使用调用方给出的唯一绝对路径，不执行目录扫描。`scan` 模式使用跨平台脚本，不得使用 `grep`、`find`、`sed` 或 Bash 管道：
 
 ```text
 python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_path}" --quiet
-```
-
-如调用方提供 `company_id` 或 `drug_id`，将身份过滤器传给脚本：
-
-```text
 python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_path}" --company-id "{company_id}" --drug-id "{drug_id}" --quiet
 ```
 
-不得使用 `grep`、`find`、`sed` 或 Bash 管道。无输出表示没有待处理 raw，直接报告并结束。
+第二条仅在提供过滤器时使用。无输出表示没有待处理 raw，直接报告并结束。两种模式进入后续步骤前都必须得到明确 raw 路径列表；`single_raw` 列表长度必须为 1。
 
-## Step 2: 建立身份与路径上下文
+2. **建立上下文。** 脚本返回 `{company_id}/{drug_id}/raw/{drug_id}@{source_label}.md`。使用 `pathlib`/harness 解析路径组件，并派生同一药品树中的 `drug_dir`、`drug_page`、`raw_dir`、`summary_dir`、同名 `summary_file` 和根 `attachments_dir`。
+3. **校验身份。** 写入前读取根 `index.md`，用 `drug_id`、别名和完整 vault 路径联合确认恰好一个条目映射到 `{company_id}/{drug_id}/{drug_id}.md`。读取药品页构造标准身份对象，必要时调用 drug-identity `resolve_only` 校验；不得从 raw 猜测身份。`companies` 如存在必须与 `company_ids` 相同。
+4. **生成 summary。** 读取 raw，按 summary-spec 创建唯一 `summary_file`。只纳入 raw 支持的全部适应症和试验事实，保持分组、继承关系与 canonical 相对来源链接准确，不得串组或推断。
+5. **处理 PDF 图片。** URL 图保持远程链接。已有 raw 对应 PDF 且缺少关键图时，可用 harness/PDF 工具优先裁剪、否则保存整页到 `{research_dir}/attachments/`，并从 summary 以 `../../../attachments/{file}` 引用。工具不可用时继续文本 summary，报告原因，不伪造附件。
+6. **独立验证。** 每个新 summary 交给不同于生成者的 data-verify agent。verifier 从相对链接解析 raw，确认其为当前 `raw_dir` 的直接文件，并覆盖全部适应症分节。有 `FAIL` 时按问题修正文后交给新的独立 verifier；仍失败则不索引。保留并报告 `WARN`。
+7. **派发索引。** 仅将通过 clinical-indexer 完整资格门禁的 summary 以部分模式派发。每份 summary 对 drug page 归档一次，再按全部 `indications` 更新适应症页。索引器不支持多适应症时报告不兼容，不拆 summary、不退回 v1。
 
-`find_unprocessed` 返回相对 `research_dir` 的持久路径：
+可按来源并行生成，但每个 worker 必须获得该 raw 的完整 identity/path context，且写入目标互不重叠。
 
-```text
-{company_id}/{drug_id}/raw/{drug_id}@{source_label}.md
-```
+## 失败与恢复
 
-对每项用 `pathlib`/harness 路径能力解析并校验：
+- 根索引零匹配、多匹配、同一 `drug_id` 映射多路径、路径映射另一药物，或路径、文件名、标识符/标签、药品页不合规时，该项失败且不写 summary。
+- 同名 summary 已存在时跳过。生成失败不得留下空或半成品 summary；任何情况下不得修改 raw 正文或无关文件。
+- 单项文件异常、生成失败、验证失败或索引失败不阻断其他独立项，但必须逐项报告。
 
-```text
-company_id = 第 1 个路径组件
-drug_id = 第 2 个路径组件
-drug_dir = research_dir/company_id/drug_id
-drug_page = drug_dir/{drug_id}.md
-raw_dir = drug_dir/raw
-summary_dir = drug_dir/summary
-raw_file = raw_dir/{drug_id}@{source_label}.md
-summary_file = summary_dir/{drug_id}@{source_label}.md
-```
-
-写入前必须读取根 `{research_dir}/index.md`，以 `drug_id`、别名和完整 vault 路径联合查找，确认恰好一个条目映射到 `{company_id}/{drug_id}/{drug_id}.md`。零个、多个、同一 `drug_id` 映射多路径或该路径映射另一药物时，该项失败且不得写 summary。
-
-读取 `drug_page` 获得 `drug_aliases`、`target`、`archive_company`、`company_ids`、`molecule_type`；兼容字段 `companies` 如存在必须与 `company_ids` 相同。必要时以 drug-identity 的 `resolve_only` 模式校验。上下文必须含 `research_dir`、`drug_dir`、`drug_page`、`raw_dir`、`summary_dir`、`attachments_dir`。不得从 raw 猜测身份。路径、文件名、标识符/标签不合规，drug page 缺失或同名 summary 已存在时，记录失败/跳过并继续。
-
-## Step 3: 每个 raw 生成一个 summary
-
-读取 raw 和 `summary-spec.md`，写入唯一的 `summary_file`：
-
-- 一个 raw 只生成一个 summary，不因多个适应症拆分文件。
-- frontmatter 包含身份字段和 `indications` 数组。
-- 正文按数组使用 `## [{indication_id}] {indication}` 标题分别建立分节；对象可携带 trial 级 phase/regimen/cutoff 并按 summary-spec 继承，数据组别不得串列。
-- H1 后必须写精确 canonical link：`> 来源原文: [{source_label}](../raw/{drug_id}@{source_label}.md)`。
-- URL 图保持远程链接。已有 raw 若对应 PDF 且缺少关键图，可使用可用 harness/PDF 工具将裁剪图（优先）或完整页面保存到 `{research_dir}/attachments/`，并从 summary 以 `../../../attachments/{file}` 引用。
-- PDF 渲染/截图不可用时继续生成文本 summary，在结果中明确报告图片缺失原因；不得伪造附件。
-- 不覆盖文件、不追加序号、不写旧式 wikilink。生成失败时不得保存空或半成品 summary。
-- 提取阶段固定写 `verification: pending`、`verification_fail_count: null`、`verification_coverage: null`，不得预先写 `passed` 或自行审核。
-
-可按来源并行，但每个 worker 必须收到该 raw 的完整 identity/path context，且写入目标互不重叠。
-
-## Step 4: 独立验证与索引
-
-每个新 summary 由不同于生成者的独立 data-verify agent 审核。verifier 根据 summary 的相对 Markdown 来源链接解析 raw，校验该链接仍位于当前 `raw_dir`，并覆盖 `indications` 数组中的所有正文分节。verifier 不联网、不修改正文。
-
-有 FAIL 时按问题修正 summary 后交给新的独立 verifier 重验；仍失败则不索引。WARN 保留并报告。
-
-仅将通过项以部分模式派发给 clinical-indexer：每个 summary 对 drug page 只归档一次，并按 `indications` 数组分别派发到所有适应症索引；所有条目引用同一个 summary。索引器不能处理多适应症时报告不兼容，不得拆 summary 或退回 v1 格式。
-
-## Step 5: 报告
+## 输出
 
 ```text
 批量处理完成：
@@ -88,5 +64,3 @@ summary_file = summary_dir/{drug_id}@{source_label}.md
 - attachments/warnings: {PDF 图片与不可用原因}
 - indexing: {drug 与逐适应症结果}
 ```
-
-单项文件异常、摘要生成失败或验证失败不阻塞其他独立项；任何情况下都不得修改 raw 正文或无关文件。

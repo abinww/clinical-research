@@ -25,7 +25,7 @@
 
 严格语法如下，不得静默清洗输入：
 
-- `company_id`、`drug_id`：1-80 个 Unicode 字符的单一路径组件，允许中文、ASCII 字母、数字、空格、`.`、`_`、`-`；禁止控制字符及 `< > : " / \\ | ? * @ # % [ ] ^`，不得为 `.`/`..`，不得以空格或句点结尾，不得是 Windows 保留设备名（不区分大小写，包括带扩展名形式）。
+- `company_id`、`drug_id`：必须通过 `scripts/layout.py:is_valid_identifier`；长度 1-80，首字符为 Unicode 字母或数字，内部仅允许 Unicode 字母/数字、空格、`.`、`_`、`-`，不得以空格或句点结尾，也不得是 Windows 保留设备名。
 - `indication_id`：稳定 ASCII ID，语法 `[A-Za-z0-9][A-Za-z0-9._-]{0,79}`；同一规范适应症/治疗线跨来源保持不变。
 - `source_label`：语法 `[A-Za-z0-9][A-Za-z0-9._-]{0,79}`，明确禁止 `@`、空格、中文和路径/Markdown 特殊字符。冲突只能加 trial/abstract/analysis 等稳定语义后缀。
 - `drug_id` 必须与药品页一致；文件基名由唯一分隔符 `@` 连接 `drug_id` 与 `source_label`。

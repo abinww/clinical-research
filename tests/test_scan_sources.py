@@ -113,7 +113,7 @@ class ScanSourcesTests(unittest.TestCase):
 
     def test_audit_requires_real_final_heading_and_nonempty_canonical_table(self):
         prefix = (
-            "---\nverification: passed\nverification_fail_count: '0'\nverification_coverage: complete\n"
+            "---\nverification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
             "indications:\n  - indication_id: NSCLC_1L\n    indication: NSCLC 一线\n---\n"
         )
         valid = (

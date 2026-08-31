@@ -5,91 +5,51 @@ description: |
   临床数据均可追溯到 canonical source link 指向的 raw。
 ---
 
-# 数据一致性审核 - 2.0
+# 临床数据一致性审核
 
-> verifier 必须独立于提取/摘要生成 agent。本 skill 不联网、不评价临床价值，只修改审核章节和 verification 字段。
+## 职责与边界
 
-## 安全与独立性约束
+本 skill 独立核对 summary 与其唯一 raw。verifier 必须独立于提取或摘要生成 agent；不联网、不评价临床价值、不补充或修正正文，只写审核状态和末尾审核章节。
 
-- 输入由调用方明确给出；不自行扫描全库。
-- 每个 summary 独立执行定位、核对和写入。批量输入不能共享结论或证据。
-- 只允许修改 YAML 的 `verification`、`verification_fail_count`、`verification_coverage` 和文件末尾 `## 数据一致性审核` 章节。
-- 不得修改身份字段、`indications` 数组、临床正文、图片、试验设计或专家点评。
-- 不联网、不补充数据、不用常识或外部知识弥补 raw 证据。
-- 不审核专家点评的观点；审核正文中的临床数值、试验事实、分组和图片所声称的数据。
-- 不支持 v1 wikilink或旧目录解析。无法满足 2.0 canonical link 时直接拒绝该项。
+## 输入与共享契约
 
-## Step 1: 安全解析来源
+- 调用方明确提供一个或多个 summary 路径；不自行扫描全库。批量输入逐文件独立定位、取证和写入，不共享结论或证据。
+- 来源链接、文件命名、`indications` 和审核格式以 `../schema/summary-spec.md` 为权威。
+- 可选上下文包括绝对 `research_dir` 和 `raw_dir`；路径身份须符合 `../drug-identity/SKILL.md` 的布局契约。
+- 本 skill 不支持 v1 wikilink 或旧目录解析。
 
-读取 summary 并只接受一行 canonical source link：
+## 不变量与写边界
 
-```markdown
-> 来源原文: [label](../raw/{drug_id}@{source_label}.md)
-```
+- 只允许修改 YAML 的 `verification`、`verification_fail_count`、`verification_coverage`，以及文件末尾的规范 `## 数据一致性审核` 章节。
+- 不得修改身份字段、`indications`、临床正文、图片、试验设计或专家点评；不审核专家点评观点。
+- 只以 raw 文本和可读取的实际附件为证据，不用常识、外部知识或联网内容补证。
+- 每个临床数值、关键试验事实和分组都必须有审核行，并覆盖全部适应症。
 
-解析规则：
+## 工作流
 
-1. 将 URL 编码后的文件名安全解码，以 summary 所在目录为基准解析相对路径。
-2. 拒绝绝对路径、wikilink、反斜杠、嵌套 raw 子目录、`..` 越界和一个文件内多个来源行。
-3. 若调用方提供 `raw_dir`，解析结果必须是其直接子文件；否则从 2.0 路径 `{research_dir}/{company_id}/{drug_id}/summary/` 推导相邻 `raw/` 并做同样校验。
-4. raw 与 summary 文件名必须完全相同，且匹配 `{drug_id}@{source_label}.md`；summary frontmatter 的 `drug_id`、`source_label` 必须与文件名一致。
-5. 解析后的 raw 必须存在且可读。任何校验失败都不尝试搜索同名文件或旧目录，只报告无法安全定位来源。
+1. **安全定位来源。** 只接受全文件唯一的规范相对 Markdown 来源链接。对 URL 编码文件名安全解码，以 summary 目录为基准解析；拒绝绝对路径、wikilink、反斜杠、嵌套 raw 子目录、`..` 越界和多个来源行。
+2. **校验配对。** 若提供 `raw_dir`，结果必须是其直接子文件；否则从 `{research_dir}/{company_id}/{drug_id}/summary/` 推导相邻 `raw/`。raw 与 summary 文件名必须完全相同并匹配规范命名；summary frontmatter 的 `drug_id`、`source_label` 必须与文件名一致，raw frontmatter 只校验 summary-spec 定义的来源字段。raw 必须存在且可读；失败时不搜索同名文件或旧目录。
+3. **确定范围。** 读取 summary-spec 的数据一致性规则和 `indications`。数组缺失、为空、重复，或与正文分节不一一对应时记 `FAIL`。逐适应症覆盖样本量/分析集、疗效、安全性、统计量、试验阶段与设计、cohort、剂量、组别、治疗线、联合方案、日期，以及正文或图注声称的数据事实。
+4. **逐项核对。** 按以下精确定义记录每一项，并在多适应症来源中明确 `indication_id`：
 
-## Step 2: 读取规范与范围
+| 状态 | 判定 |
+|---|---|
+| `PASS` | raw 有直接证据或明确等价表达，且适应症、组别、剂量、分析集、单位和时间点一致 |
+| `WARN` | raw 有近似依据，但术语、上下文、单位或时间点需人工确认 |
+| `FAIL` | 无依据，或适应症、组别、剂量、单位、时间点对应错误 |
 
-读取 `../schema/summary-spec.md` 的数据一致性规则。读取 frontmatter `indications` 数组，并确认正文对每个数组项存在对应分节。数组缺失、为空、重复，或正文适应症与数组不一致，均记为 `FAIL`。
+`AE`、`TEAE`、`TRAE`、`SAE` 不得混用，单位不得擅自换算，“未披露”不得审核为确定值。远程图片无需下载；若事实仅依赖远程图片而 raw 无文本证据，记 `WARN` 或 `FAIL`。PDF 附件缺失不自动使全文失败，但仅存在于缺失图片中的数值不能判 `PASS`。
 
-逐适应症审核以下内容，包括但不限于：
+5. **写入结果。** 只替换文件末尾最后一个规范审核章节，不误删正文中的同名文本或引用。表格结构遵守 summary-spec，并包含适应症列。覆盖完整且无 `FAIL` 时写 `passed/0/complete`；存在 `FAIL` 或覆盖不完整时写 `failed/{实际 FAIL 数}/incomplete`。
+6. **复核写入。** 确认审核表覆盖全部数值、事实和 indication IDs，FAIL 数与 frontmatter 一致，审核章节仍为文件末尾。
 
-- 样本量和分析集：`N`、`n`、ITT、可评估人群。
-- 疗效：ORR、cORR、DCR、CR、PR、SD、PFS、OS、DoR 及时间点。
-- 统计量：HR、p-value、CI。
-- 安全性：AE、TEAE、TRAE、SAE、等级、减量、停药和死亡。
-- 试验事实：phase、trial、cohort、剂量、治疗组、对照组、适应症、治疗线、联合方案和发布日期。
-- 临床图片中被正文或图注作为数据事实陈述的内容；只以 raw 文本和可读取的实际附件为证据，不因图片存在就自动通过。
+## 失败与恢复
 
-## Step 3: 逐项核对
+- 来源无法安全定位时不得伪造审核表或写 `passed`；返回 `unresolved`，不搜索替代 raw。
+- 审核不完整必须标记失败，不得因无已识别 FAIL 而通过。
+- `FAIL` 的正文只能由调用方修正，再交给新的独立 verifier；本 skill 不自行修正后自证通过。
 
-- `PASS`：raw 中有直接证据或明确等价表达，且适应症、组别、剂量、分析集、单位和时间点一致。
-- `WARN`：raw 有近似依据，但术语、上下文、单位或时间点需要人工确认。
-- `FAIL`：无依据，或适应症/组别/剂量/单位/时间点对应错误。
-
-每个临床数值和关键试验事实必须有审核行。多适应症来源必须在审核表中标明适应症，避免同一数值被错误复用于另一分节。`AE`、`TEAE`、`TRAE`、`SAE` 不得混用；单位不得擅自换算；“未披露”不应被审核成确定值。
-
-URL 远程图片无需下载；若 summary 仅依赖远程图片而 raw 没有相应文本证据，标记 `WARN` 或 `FAIL`，不得联网取证。PDF 附件缺失或渲染工具不可用不自动导致全文失败，但任何仅存在于缺失图片中的数值不能判为 `PASS`。
-
-## Step 4: 写入审核结果
-
-只覆盖文件末尾的审核章节，表格增加适应症列：
-
-```markdown
-## 数据一致性审核
-
-| indication_id | 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
-|---------------|--------|---------------|---------|------|------|
-| NSCLC_1L | ORR | 42.3% | "...ORR was 42.3%..." | PASS | - |
-| SCLC_1L | mPFS | 11.3 | 未找到 | FAIL | raw 中未出现该数值 |
-```
-
-审核覆盖完整且无 FAIL（允许 WARN）：
-
-```yaml
-verification: passed
-verification_fail_count: 0
-verification_coverage: complete
-```
-
-存在 FAIL 或审核无法覆盖完整：
-
-```yaml
-verification: failed
-verification_fail_count: {FAIL 数量}
-verification_coverage: incomplete
-```
-
-来源无法安全定位时不得伪造审核表或写 `passed`；返回定位失败。若文件已有审核章节，只替换最后的规范审核章节，正文中的同名文本或引用不得误删。
-
-## Step 5: 返回
+## 输出
 
 ```text
 data-verify: {summary路径}
@@ -101,5 +61,3 @@ data-verify: {summary路径}
 - coverage complete: yes / no
 - warnings: {需人工复核项}
 ```
-
-FAIL 的正文修正只能由调用方完成，再交给新的独立 verifier 审核；本 skill 不自行修正后自证通过。
