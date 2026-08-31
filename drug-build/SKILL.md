@@ -29,7 +29,7 @@ description: |
 
 ## Step 1: 药物身份锚定
 
-读取 `../drug-identity/SKILL.md`，按其中 workflow 执行，获取该药品的标准身份对象（drug_id、drug_aliases、target、companies、molecule_type；drug 展示名从 drug_aliases 选取）。
+读取 `../drug-identity/SKILL.md`，按其中 workflow 执行，获取该药品的标准身份与位置对象（包括 drug_id、drug_aliases、target、companies、molecule_type、drug_page、raw_dir、summary_dir；drug 展示名从 drug_aliases 选取）。
 
 如果无法确认药物身份，停下返回用户确认，不进入后续步骤。
 
@@ -38,7 +38,8 @@ description: |
 读取 `../drug-trials-search/SKILL.md`，按其中 workflow 执行：
 
 - 查询该药品在 ClinicalTrials.gov 的全部试验
-- 写入 `drug/{drug_id}.md` 的 `## 当前临床管线` 章节（新建或更新）
+- 写入身份对象已解析的 `drug_page` 的 `## 当前临床管线` 章节
+- 不创建 `trials/` 目录或独立 trial 搜索输出文件
 
 ## Step 3: 搜索已公布临床数据
 
@@ -49,7 +50,7 @@ description: |
 
 ## Step 4: 保存 plan 表
 
-将 plan 表保存到 `drug/temp/search_plan_{drug_id}_{date}.md`。
+将 plan 表保存到 `{research_dir}/.temp/plans/search_plan_{drug_id}_{date}.md`。这是本 workflow 唯一允许持久化的临时文件；不得在 drug 目录或其他位置创建临时文件。
 
 若 plan 表为空（无任何来源）：停下询问用户，不进入 Step 5。否则直接进入 Step 5。
 
@@ -58,20 +59,20 @@ description: |
 ### 5.1 运行进度检查脚本
 
 ```text
-python {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --plan drug/temp/search_plan_{drug_id}_{date}.md
+python {skill_dir}/scripts/check_plan_progress.py --config ../config.yaml --plan {research_dir}/.temp/plans/search_plan_{drug_id}_{date}.md
 ```
 
 脚本只输出每个 URL 的状态（纯数据，不做流程分类）：
 
 ```text
 plan 表进度：
-- {url}: 已完成 / 未提取 / 已提取未生成summary / 未审核
+- {url}: 已完成 / 未提取 / 已提取未生成summary / 未审核 / 来源对应多个raw / 一个raw对应多个summary
 ```
 
 由本 skill 根据状态自行分类：
 
 - **未提取** → 待处理 URL，进入 5.2 展示、5.3 提取
-- **已提取未生成summary / 未审核** → 失败项，不重跑，记入最终报告留待人工处理
+- **已提取未生成summary / 未审核 / 来源对应多个raw / 一个raw对应多个summary** → 失败项，不重跑，记入最终报告留待人工处理
 - **已完成** → 跳过
 
 ### 5.2 展示待提取来源
@@ -106,13 +107,14 @@ plan 表进度：
 
 ```text
 - "未提取" → 重跑一次 multi-extractor（Step 5.3）
-- "已提取未生成summary" / "未审核" → 第二次仍失败则记入最终报告的失败项，不再重试
+- "已提取未生成summary" / "未审核" / "来源对应多个raw" / "一个raw对应多个summary" → 记入最终报告的失败项，不再重试
 - "已完成" → 该行完成
 ```
 
-- 全部行"已完成"：删除 plan 表文件（`drug/temp/search_plan_{drug_id}_{date}.md`），进入 Step 7 输出报告。
+- 全部行"已完成"：删除 plan 表文件（`{research_dir}/.temp/plans/search_plan_{drug_id}_{date}.md`），进入 Step 7 输出报告。
 - 仍有"未提取"行：**先向用户展示当前 plan 表状态**（未提取行列表 + 此前失败项），再重跑一次 multi-extractor（Step 5.3，每行总尝试上限 2 次）；第二次仍失败 → 记入失败项，进入 Step 7。
-- 存在"已提取未生成summary" / "未审核"行：不重跑（multi-extractor 静默模式对重复来源一律跳过），记入失败项，进入 Step 7。
+- 存在"已提取未生成summary" / "未审核" / "来源对应多个raw" / "一个raw对应多个summary"行：不重跑，记入失败项，保留 plan 表并进入 Step 7。
+- 第二轮后只要仍有任一非"已完成"行，保留 plan 表供续跑和人工修复；只有全部成功时删除。
 
 重跑前展示格式：
 
@@ -129,8 +131,8 @@ plan 表进度：
 drug-build 完成：
 - 药品: {drug_id} ({drug})
 - 别名全集: {列表}
-- 管线表: drug/{drug_id}.md（CTG 试验 N 个）
-- plan 表: drug/temp/search_plan_{drug_id}_{date}.md（M 行）
+- 管线表: {drug_page}（CTG 试验 N 个）
+- plan 表: 已删除（全部完成）/ {research_dir}/.temp/plans/search_plan_{drug_id}_{date}.md（未完成，保留 M 行）
 - 提取: 成功 X 个 / 失败 Y 个 / 跳过 Z 个
 - 验证: PASS/WARN/FAIL 汇总
 - 索引: drug/ 与 indication/ 归档结果

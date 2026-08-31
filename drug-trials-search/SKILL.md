@@ -17,7 +17,8 @@ description: |
 - ✅ 当前版本只查询 clinicaltrials.gov；chinadrugtrials.org.cn 仅保留 schema 占位，暂不查询
 - ✅ API 返回的所有结果全部罗列；写入已有 drug 页面时按 NCT 编号幂等合并，避免同一试验重复出现
 - ✅ 输出为表格格式
-- ✅ 搜索完成后必须将结果写入 `drug/{drug_id}.md` 的临床管线章节
+- ✅ 搜索完成后必须将结果写入 drug-identity 返回的 `drug_page` 临床管线章节
+- ❌ 不创建 `trials/` 目录，不保存独立 trial 搜索结果或其他 trial 输出文件
 
 ## 数据源
 
@@ -33,7 +34,7 @@ description: |
 - **适应症**（可选）：如 "非小细胞肺癌"、"NSCLC"
 - **Sponsor**（可选）：如 "Merck"、"AstraZeneca"
 
-调用 `../drug-identity/SKILL.md` 解析药品身份，获取标准身份对象（drug_id、drug_aliases、target、companies、molecule_type；drug 展示名从 drug_aliases 选取）。无法确认身份时停下询问用户。
+调用 `../drug-identity/SKILL.md` 解析药品身份，获取标准身份与位置对象（包括 drug_id、drug_aliases、target、companies、molecule_type、drug_page；drug 展示名从 drug_aliases 选取）。无法确认身份或未返回已解析的 `drug_page` 时停下询问用户。
 
 CTG 查询时使用 `drug_id` 及 `drug_aliases` 中的主要别名作为查询词（避免只给商品名时搜不到研发代号登记的试验）。
 
@@ -66,9 +67,9 @@ python {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适�
 ```
 关注「当前临床管线」章节的格式要求。
 
-### 4.2 处理 drug/{drug_id}.md
+### 4.2 处理 drug_page
 
-> 本 skill **不新建** drug 文件，只写入 `## 当前临床管线` 章节。若文件不存在，停止并报告，不自行新建。
+> 本 skill **不新建** drug 文件，只写入已解析 `drug_page` 的 `## 当前临床管线` 章节。若文件不存在，停止并报告，不自行新建或猜测路径。
 
 ```
 文件存在？
@@ -78,7 +79,7 @@ python {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适�
 │         按 NCT编号 去重合并（同号更新，不同号追加）
 │         不触碰其他章节（基本信息、临床数据汇总、关键里程碑）
 │
-└── 否 → 停止并报告："drug/{drug_id}.md 不存在，无法写入管线章节"；不自行新建文件
+└── 否 → 停止并报告："{drug_page} 不存在，无法写入管线章节"；不自行新建文件
 ```
 
 **写入边界**：本 skill 只写 `## 当前临床管线`；**不得创建或填充** `## 临床数据汇总`、`## 关键里程碑`（它们由 clinical-indexer 基于已审核 summary 生成）。
@@ -96,14 +97,7 @@ python {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适�
 
 ### 4.4 写入
 
-将与 Step 3 完全相同的 schema 对齐表格写回 `{drug_dir}/{drug_id}.md`。只更新 `### clinicaltrials.gov` 子表，保留 `### chinadrugtrials.org.cn` 占位和人工内容不变。
-
-### 4.5 可选：保存搜索结果到 trials/ 目录
-
-如需保留原始搜索结果，可额外保存到：
-```
-{trials_dir}/search_{药品名称}_{日期}.md
-```
+将与 Step 3 完全相同的 schema 对齐表格写回 `drug_page`。只更新 `### clinicaltrials.gov` 子表，保留 `### chinadrugtrials.org.cn` 占位和人工内容不变。脚本标准输出仅用于本次展示和写入，不另行持久化。
 
 ## 技术说明
 

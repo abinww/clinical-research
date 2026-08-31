@@ -1,28 +1,58 @@
-"""Small, dependency-free helpers for reading clinical-research config files."""
+"""Read the dependency-free, flat clinical-research configuration."""
 
 from __future__ import annotations
 
-import os
+from dataclasses import dataclass
 from pathlib import Path
 
 
-def _value(line: str) -> str:
-    value = line.split(":", 1)[1].split("#", 1)[0].strip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+def _value(value: str) -> str:
+    quote = None
+    comment = len(value)
+    for index, character in enumerate(value):
+        if character in {'"', "'"}:
+            if quote is None:
+                quote = character
+            elif quote == character:
+                quote = None
+        elif character == "#" and quote is None:
+            comment = index
+            break
+    if quote is not None:
+        raise ValueError("config.yaml 包含未闭合的引号")
+
+    value = value[:comment].strip()
+    if value.startswith(('"', "'")):
+        if len(value) < 2 or value[-1] != value[0]:
+            raise ValueError("config.yaml 包含无效的引号值")
         value = value[1:-1]
+    elif '"' in value or "'" in value:
+        raise ValueError("config.yaml 包含无效的引号值")
     return value
 
 
 def read_config(config_path: str | Path) -> dict[str, str]:
-    """Read the flat path-only config format used by this skill."""
+    """Read the 2.0 config, which contains only an absolute research root."""
     config = {}
     with Path(config_path).open("r", encoding="utf-8-sig") as stream:
-        for raw_line in stream:
+        for line_number, raw_line in enumerate(stream, 1):
             line = raw_line.strip()
-            if not line or line.startswith("#") or ":" not in line:
+            if not line or line.startswith("#"):
                 continue
-            key, _ = line.split(":", 1)
-            config[key.strip()] = _value(line)
+            if ":" not in line:
+                raise ValueError(f"config.yaml 第 {line_number} 行格式无效")
+            key, value = line.split(":", 1)
+            key = key.strip()
+            if not key or any(character.isspace() for character in key):
+                raise ValueError(f"config.yaml 第 {line_number} 行格式无效")
+            if key in config:
+                raise ValueError(f"config.yaml 包含重复字段: {key}")
+            config[key] = _value(value)
+    if not config.get("research_dir", "").strip():
+        raise ValueError("config.yaml 缺少 research_dir")
+    unexpected = set(config) - {"research_dir"}
+    if unexpected:
+        raise ValueError(f"config.yaml 包含不支持的字段: {', '.join(sorted(unexpected))}")
     return config
 
 
@@ -30,4 +60,36 @@ def configured_path(config: dict[str, str], key: str) -> Path:
     value = config.get(key, "").strip()
     if not value:
         raise ValueError(f"config.yaml 缺少 {key}")
-    return Path(os.path.expanduser(value)).expanduser()
+    return Path(value).expanduser()
+
+
+@dataclass(frozen=True)
+class ResearchPaths:
+    """Paths derived from the single configured research root."""
+
+    research_dir: Path
+
+    @property
+    def index(self) -> Path:
+        return self.research_dir / "index.md"
+
+    @property
+    def indication(self) -> Path:
+        return self.research_dir / "indication"
+
+    @property
+    def attachments(self) -> Path:
+        return self.research_dir / "attachments"
+
+    @property
+    def plans(self) -> Path:
+        return self.research_dir / ".temp" / "plans"
+
+
+def load_config(config_path: str | Path) -> ResearchPaths:
+    """Load config and require the configured research root to be absolute."""
+    path = Path(config_path)
+    root = configured_path(read_config(path), "research_dir")
+    if not root.is_absolute():
+        raise ValueError("config.yaml 的 research_dir 必须是绝对路径")
+    return ResearchPaths(root.resolve())

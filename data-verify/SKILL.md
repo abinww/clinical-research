@@ -1,135 +1,102 @@
 ---
 name: data-verify
 description: |
-  数据一致性审核工具。当用户提到以下关键词时触发：
-  - "验证这个summary"
-  - "审核summary"
-  - "检查summary数据"
-  主要被 multi-extractor / drug-build 编排调用。
+  独立审核一个或多个 clinical-research 2.0 summary，确认其中所有适应症的
+  临床数据均可追溯到 canonical source link 指向的 raw。
 ---
 
-# 数据一致性审核
+# 数据一致性审核 - 2.0
 
-> 本文件由 clinical-research/SKILL.md 路由后读取执行，或由 multi-extractor / drug-build 编排调用。
-> 职责：验证 summary 文件中的临床数据是否全部来源于对应 raw 文件，并把审核结果写入 summary 文件末尾。
-> 本 skill 只修改 summary 的审核章节和 verification 字段，不碰正文，不联网，不评价临床价值。
+> verifier 必须独立于提取/摘要生成 agent。本 skill 不联网、不评价临床价值，只修改审核章节和 verification 字段。
 
-## 执行约束
+## 安全与独立性约束
 
-- ✅ 输入：一批 summary 文件路径（调用方分配；单个 summary 时即一批一个）
-- ✅ 批量执行：对每个 summary **独立执行**全部步骤（定位文件 → 逐项核对 → 写入审核结果）
-- ✅ 从 summary 的 `> 来源原文: [[raw/{文件}.md]]` 定位 raw 文件
-- ✅ 按 `schema/summary-spec.md` 的"数据一致性审核"规则逐项核对
-- ✅ 只修改 summary 末尾的 `## 数据一致性审核` 章节和 YAML 的 `verification` / `verification_fail_count` 字段（需要该 summary 文件的写权限）
-- ✅ 不自己扫描 summary/ 目录（扫描由调用方 multi-extractor 统一完成，避免并发重复审核）
-- ❌ 不修改 summary 正文（核心数据、图片、试验设计、专家点评等章节）
-- ❌ **不审核专家点评章节**：专家点评仅作参考，不在审核范围内；只审核有效性和安全性数据
-- ❌ 不联网
-- ❌ 不补充新数据
-- ❌ 不评价临床价值
-- ❌ 不基于常识、外部知识或推测判定为通过
+- 输入由调用方明确给出；不自行扫描全库。
+- 每个 summary 独立执行定位、核对和写入。批量输入不能共享结论或证据。
+- 只允许修改 YAML 的 `verification`、`verification_fail_count` 和文件末尾 `## 数据一致性审核` 章节。
+- 不得修改身份字段、`indications` 数组、临床正文、图片、试验设计或专家点评。
+- 不联网、不补充数据、不用常识或外部知识弥补 raw 证据。
+- 不审核专家点评的观点；审核正文中的临床数值、试验事实、分组和图片所声称的数据。
+- 不支持 v1 wikilink或旧目录解析。无法满足 2.0 canonical link 时直接拒绝该项。
 
-## Step 1: 定位文件
+## Step 1: 安全解析来源
 
-从用户输入或调用方获得 summary 文件路径列表。
+读取 summary 并只接受一行 canonical source link：
 
-对列表中的**每一个** summary 独立执行 Step 2-5：
-
-读取该 summary 文件，从正文中提取：
-
-```text
-> 来源原文: [[raw/{raw文件名}.md]]
+```markdown
+> 来源原文: [label](../raw/{drug_id}@{source_label}.md)
 ```
 
-得到对应的 raw 文件路径。如果 summary 中没有来源原文行，停止该 summary 的审核并报告无法定位 raw 文件，继续处理列表中的下一个。
+解析规则：
 
-## Step 2: 读取审核规范
+1. 将 URL 编码后的文件名安全解码，以 summary 所在目录为基准解析相对路径。
+2. 拒绝绝对路径、wikilink、反斜杠、嵌套 raw 子目录、`..` 越界和一个文件内多个来源行。
+3. 若调用方提供 `raw_dir`，解析结果必须是其直接子文件；否则从 2.0 路径 `{research_dir}/{company_id}/{drug_id}/summary/` 推导相邻 `raw/` 并做同样校验。
+4. raw 与 summary 文件名必须完全相同，且匹配 `{drug_id}@{source_label}.md`；summary frontmatter 的 `drug_id`、`source_label` 必须与文件名一致。
+5. 解析后的 raw 必须存在且可读。任何校验失败都不尝试搜索同名文件或旧目录，只报告无法安全定位来源。
 
-读取 `../schema/summary-spec.md`，按其中"数据一致性审核"章节的规则执行。
+## Step 2: 读取规范与范围
 
-审核字段包括但不限于：
+读取 `../schema/summary-spec.md` 的数据一致性规则。读取 frontmatter `indications` 数组，并确认正文对每个数组项存在对应分节。数组缺失、为空、重复，或正文适应症与数组不一致，均记为 `FAIL`。
 
-- 样本量：`N`、`n`
-- 疗效：`ORR`、`cORR`、`DCR`、`CR`、`PR`、`SD`、`mPFS`、`rPFS`、`mOS`、`mDoR`、`DoR`
-- 统计量：`HR`、`p-value`、`CI`
-- 安全性：`AE`、`TEAE`、`TRAE`、`SAE`、`≥3级AE/TEAE/TRAE`、减量、停药、死亡
-- 试验信息：phase、trial name、cohort、剂量、治疗组、对照组、适应症、治疗线数、会议/发布日期
+逐适应症审核以下内容，包括但不限于：
+
+- 样本量和分析集：`N`、`n`、ITT、可评估人群。
+- 疗效：ORR、cORR、DCR、CR、PR、SD、PFS、OS、DoR 及时间点。
+- 统计量：HR、p-value、CI。
+- 安全性：AE、TEAE、TRAE、SAE、等级、减量、停药和死亡。
+- 试验事实：phase、trial、cohort、剂量、治疗组、对照组、适应症、治疗线、联合方案和发布日期。
+- 临床图片中被正文或图注作为数据事实陈述的内容；只以 raw 文本和可读取的实际附件为证据，不因图片存在就自动通过。
 
 ## Step 3: 逐项核对
 
-对 summary 中的每一项临床数据和试验事实，在 raw 文件中查找依据：
+- `PASS`：raw 中有直接证据或明确等价表达，且适应症、组别、剂量、分析集、单位和时间点一致。
+- `WARN`：raw 有近似依据，但术语、上下文、单位或时间点需要人工确认。
+- `FAIL`：无依据，或适应症/组别/剂量/单位/时间点对应错误。
 
-状态定义：
+每个临床数值和关键试验事实必须有审核行。多适应症来源必须在审核表中标明适应症，避免同一数值被错误复用于另一分节。`AE`、`TEAE`、`TRAE`、`SAE` 不得混用；单位不得擅自换算；“未披露”不应被审核成确定值。
 
-- `PASS`: `raw/` 中能找到直接证据或明确等价表达，且组别、剂量、单位、时间点一致
-- `WARN`: `raw/` 中有近似依据，但组别、单位、时间点、术语或上下文需要人工确认
-- `FAIL`: `raw/` 中找不到依据，或发现组别/剂量/单位/时间点对应错误
-
-注意：
-
-- `summary` 中的每一个临床数值都必须有对应审核行
-- `summary` 中每一个临床数值、试验事实和关键分组信息都必须能追溯到 `> 来源原文:` 行指向的 raw 文件
-- cohort、剂量、治疗组、对照组不能串列
-- `TEAE`、`TRAE`、`AE`、`SAE` 不得混用；如原文术语不同，标记 `WARN` 或 `FAIL`
-- 时间单位不得擅自转换；如原文为 weeks，summary 写成 months，标记 `FAIL`
-- 原文没有的数据不得写成确定数据
+URL 远程图片无需下载；若 summary 仅依赖远程图片而 raw 没有相应文本证据，标记 `WARN` 或 `FAIL`，不得联网取证。PDF 附件缺失或渲染工具不可用不自动导致全文失败，但任何仅存在于缺失图片中的数值不能判为 `PASS`。
 
 ## Step 4: 写入审核结果
 
-只做以下两处修改，其余内容一律不动：
-
-1. 在 summary 文件**末尾**写入（或覆盖）`## 数据一致性审核` 章节：
+只覆盖文件末尾的审核章节，表格增加适应症列：
 
 ```markdown
 ## 数据一致性审核
 
-| 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
-|------|-------------|---------|------|------|
-| ORR | 42.3% | "...ORR was 42.3%..." | PASS | - |
-| mPFS | 11.3 | 未找到 | FAIL | raw中未出现该数值 |
-| G≥3 TRAE | 25.0% | "...grade 3 or higher TEAEs..." | WARN | raw为TEAE，summary写TRAE |
+| 适应症 | 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
+|--------|--------|---------------|---------|------|------|
+| NSCLC | ORR | 42.3% | "...ORR was 42.3%..." | PASS | - |
+| SCLC | mPFS | 11.3 | 未找到 | FAIL | raw 中未出现该数值 |
 ```
 
-2. 更新 YAML frontmatter 中的审核字段：
-
-- 全部 `PASS`（无 `FAIL`，`WARN` 允许存在）且审核覆盖完整：
+审核覆盖完整且无 FAIL（允许 WARN）：
 
 ```yaml
 verification: passed
 verification_fail_count: 0
 ```
 
-- 存在 `FAIL`：
+存在 FAIL 或审核无法覆盖完整：
 
 ```yaml
 verification: failed
-verification_fail_count: {FAIL数量}
+verification_fail_count: {FAIL 数量}
 ```
 
-- 存在 `WARN` 但无 `FAIL`：`verification` 仍为 `passed`，但必须在 summary 审核章节的问题列中保留 WARN 项，供调用方/用户人工复核。
+来源无法安全定位时不得伪造审核表或写 `passed`；返回定位失败。若文件已有审核章节，只替换最后的规范审核章节，正文中的同名文本或引用不得误删。
 
-## Step 5: 返回状态
-
-审核结果已写入各 summary 文件，不需要向用户输出审核报告。返回时逐 summary 一行状态：
+## Step 5: 返回
 
 ```text
-data-verify: {summary文件名1} verification: {passed/failed}（PASS x / WARN y / FAIL z）
-data-verify: {summary文件名2} verification: {passed/failed}（PASS x / WARN y / FAIL z）
-...
+data-verify: {summary路径}
+- source: {解析后的 raw 路径或 unresolved}
+- indications checked: {数量/列表}
+- verification: passed / failed / unresolved
+- PASS / WARN / FAIL: x / y / z
+- coverage complete: yes / no
+- warnings: {需人工复核项}
 ```
 
-调用方通过 summary YAML 的 `verification` / `verification_fail_count` 字段读取结果，判断是否需要修正后重新验证。
-
-## 常见问题
-
-### Q: summary 中找不到 `> 来源原文:` 行？
-
-停止该 summary 的审核并报告无法定位 raw 文件，继续处理列表中的下一个。
-
-### Q: 发现 FAIL 怎么处理？
-
-把 `verification: failed` 和 FAIL 数量写入 YAML。由调用方（multi-extractor 或 drug-build）负责修正 summary 正文后重新调用本 skill 审核。
-
-### Q: 可以修改 summary 正文里的数据吗？
-
-不可以。本 skill 只写审核章节和 verification 字段；数据修正由调用方完成。
+FAIL 的正文修正只能由调用方完成，再交给新的独立 verifier 审核；本 skill 不自行修正后自证通过。

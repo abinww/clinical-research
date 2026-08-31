@@ -1,98 +1,90 @@
 ---
 name: clinical-batch-extractor
 description: |
-  批量处理执行步骤（供clinical-research主skill调用）
-  
-  当主skill路由到本文件时，按以下步骤执行：
+  扫描 clinical-research 2.0 布局中尚无 summary 引用的 raw，
+  按药物身份与路径上下文批量生成、独立验证并索引摘要。
 ---
 
-# 批量处理 - 执行步骤
+# 批量处理 - 2.0
 
-> 本文件由 clinical-research/SKILL.md 路由后读取执行
-> 所有工具调用在当前session完成
+> 处理已存在的 raw。不得重新抓取来源、改写 raw，或使用 v1 目录和命名兼容逻辑。
 
-## Step 1: 扫描未处理文件
+## Step 1: 预检
 
-其中 `{clinical_research_dir}` 指包含顶层 `SKILL.md` 的 `clinical-research/` 目录，不是当前子 skill 目录。
+读取 `config.yaml`，只获取 `research_dir`；同时读取 `summary-spec.md`、`drug-identity/SKILL.md`、`data-verify/SKILL.md` 和 `clinical-indexer/SKILL.md`。`{clinical_research_dir}` 是包含顶层 `SKILL.md` 的 skill 目录。
 
-调用：
-```
-exec command="python {clinical_research_dir}/scripts/find_unprocessed.py --config {clinical_research_dir}/config.yaml"
-```
+扫描命令必须使用跨平台 Python 脚本：
 
-该脚本使用 Python 标准库，支持 Debian/Ubuntu 和 Windows 10/11，不依赖 Bash。
-
-**脚本输出解析**：
-- 列出所有未处理的 raw/ 文件
-- 如果无未处理文件，终止执行
-
-## Step 2: 遍历未处理文件
-
-对每个未处理文件，依次执行：
-
-### 2.1 读取文件内容
-
-调用 `read` 读取 raw/ 文件
-
-### 2.2 生成摘要
-
-参考 `../schema/summary-spec.md` 的格式要求，分析内容并生成摘要
-
-### 2.3 保存到 summary/
-
-摘要按药品分子目录组织。先按摘要 YAML 里的 `drug` 字段确定药品名（沿用 drug-spec.md 优先级规则：开发代码 > 短名 > 中文通用名 > 英文通用名），再创建对应的子目录。
-
-调用：
-```
-exec command="python {clinical_research_dir}/scripts/ensure_directories.py \"{summary_dir}/{药品名}\""
-write path={summary_dir}/{药品名}/{文件名}.md content={摘要内容}
+```text
+python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_path}" --quiet
 ```
 
-**文件名冲突处理**：
-- 如果文件名已存在，追加序号：
-  - `药品@适应症_P2.md` → `药品@适应症_P2_1.md`
+如调用方提供 `company_id` 或 `drug_id`，将身份过滤器传给脚本：
 
-### 2.4 记录结果
-
-记录处理结果：
-- raw_file: "raw/xxx.md"
-- summary_file: "{药品名}/药品@适应症_P2.md"
-- status: success 或 failed
-
-## Step 3: 输出报告
-
-处理完成后，输出批量处理报告：
-
-```
-批量处理完成:
-- 扫描 {raw_dir}: N 个文件
-- 待处理: K 个文件
-
-处理结果:
-✓ {raw文件名1}.md → {summary子目录}/{summary文件名1}.md
-✓ {raw文件名2}.md → {summary子目录}/{summary文件名2}.md
-✗ {raw文件名3}.md → 处理失败
-
-总计: 成功 X 个, 失败 Y 个
+```text
+python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_path}" --company-id "{company_id}" --drug-id "{drug_id}" --quiet
 ```
 
-## 边缘情况处理
+不得使用 `grep`、`find`、`sed` 或 Bash 管道。无输出表示没有待处理 raw，直接报告并结束。
 
-### {summary_dir} 文件无 "> 来源原文:" 行
+## Step 2: 建立身份与路径上下文
 
-如果 {summary_dir} 文件的正文中没有 `> 来源原文: [[raw/...]]` wikilink 行：
-- 跳过该文件，不纳入已处理列表
-- 该文件被视为独立生成的摘要，不参与去重判断
+`find_unprocessed` 返回相对 `research_dir` 的持久路径：
 
-### {raw_dir} 文件格式异常
+```text
+{company_id}/{drug_id}/raw/{drug_id}@{source_label}.md
+```
 
-如果 {raw_dir} 文件读取失败或格式异常：
-- 记录为处理失败
-- 继续处理下一个文件
+对每项用 `pathlib`/harness 路径能力解析并校验：
 
-### 摘要生成失败
+```text
+company_id = 第 1 个路径组件
+drug_id = 第 2 个路径组件
+drug_dir = research_dir/company_id/drug_id
+drug_page = drug_dir/{drug_id}.md
+raw_dir = drug_dir/raw
+summary_dir = drug_dir/summary
+raw_file = raw_dir/{drug_id}@{source_label}.md
+summary_file = summary_dir/{drug_id}@{source_label}.md
+```
 
-如果生成摘要失败或返回空内容：
-- 记录为处理失败
-- 继续处理下一个文件
-- 不保存空文件到 {summary_dir}
+读取 `drug_page` 获得 aliases、target、companies、molecule_type 等身份字段；必要时调用 drug-identity 校验，但不得从 raw 猜测或另行决定 `company_id`/`drug_id`。路径不符合布局、drug page 缺失、raw 文件名不符合 `{drug_id}@{source_label}.md` 或同名 summary 已存在时，记录失败/跳过并继续。
+
+## Step 3: 每个 raw 生成一个 summary
+
+读取 raw 和 `summary-spec.md`，写入唯一的 `summary_file`：
+
+- 一个 raw 只生成一个 summary，不因多个适应症拆分文件。
+- frontmatter 包含身份字段和 `indications` 数组。
+- 正文按数组中的适应症分别建立有效性、安全性和试验设计分节，数据组别不得串列。
+- H1 后必须写精确 canonical link：`> 来源原文: [{source_label}](../raw/{drug_id}@{source_label}.md)`。
+- URL 图保持远程链接。已有 raw 若对应 PDF 且缺少关键图，可使用可用 harness/PDF 工具将裁剪图（优先）或完整页面保存到 `{research_dir}/attachments/`，并从 summary 以 `../../../attachments/{file}` 引用。
+- PDF 渲染/截图不可用时继续生成文本 summary，在结果中明确报告图片缺失原因；不得伪造附件。
+- 不覆盖文件、不追加序号、不写旧式 wikilink。生成失败时不得保存空或半成品 summary。
+- 提取阶段固定写 `verification: pending`、`verification_fail_count: null`，不得预先写 `passed` 或自行审核。
+
+可按来源并行，但每个 worker 必须收到该 raw 的完整 identity/path context，且写入目标互不重叠。
+
+## Step 4: 独立验证与索引
+
+每个新 summary 由不同于生成者的独立 data-verify agent 审核。verifier 根据 summary 的相对 Markdown 来源链接解析 raw，校验该链接仍位于当前 `raw_dir`，并覆盖 `indications` 数组中的所有正文分节。verifier 不联网、不修改正文。
+
+有 FAIL 时按问题修正 summary 后交给新的独立 verifier 重验；仍失败则不索引。WARN 保留并报告。
+
+仅将通过项以部分模式派发给 clinical-indexer：每个 summary 对 drug page 只归档一次，并按 `indications` 数组分别派发到所有适应症索引；所有条目引用同一个 summary。索引器不能处理多适应症时报告不兼容，不得拆 summary 或退回 v1 格式。
+
+## Step 5: 报告
+
+```text
+批量处理完成：
+- 扫描根目录: {research_dir}
+- 待处理: N
+- 成功 / 失败 / 跳过: X / Y / Z
+- raw -> summary: {逐项路径}
+- indications: {逐 summary 数组}
+- verification: {PASS/WARN/FAIL 汇总}
+- attachments/warnings: {PDF 图片与不可用原因}
+- indexing: {drug 与逐适应症结果}
+```
+
+单项文件异常、摘要生成失败或验证失败不阻塞其他独立项；任何情况下都不得修改 raw 正文或无关文件。

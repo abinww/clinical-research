@@ -7,11 +7,11 @@ description: |
   - 药品名称 + "建库"流程中由编排调用
 ---
 
-# 临床数据来源搜索
+# 临床数据来源搜索 2.0
 
 > 本文件由 clinical-research/SKILL.md 路由后读取执行。
 > 职责：搜索某创新药已公布的临床数据来源，输出一个 plan 表。
-> 本 skill 不提取数据、不写入 `raw/`/`summary/`/`drug/`/`indication/`，只产出候选 URL 清单；plan 表直接返回，不保存文件。
+> 本 skill 不提取数据、不写入研究目录，只产出候选 URL 清单；plan 表直接返回，不保存文件。只有 `drug-build` 可将 plan 持久化到根 `{research_dir}/.temp/plans/`。
 
 ## 执行约束
 
@@ -19,10 +19,13 @@ description: |
 - ✅ 输出 plan 表，直接返回给用户或下一步调用
 - ✅ 搜不到药物代号时停下询问用户，不猜测
 - ❌ 不提取临床数据（由 `multi-extractor` 负责）
-- ❌ 不写入 `raw/`、`summary/`、`drug/`、`indication/`（只读取 raw/ 的 source 字段用于排除已提取来源）
+- ❌ 不写入 `raw/`、`summary/`、药品页、`indication/` 或 `.temp/plans/`
 - ❌ 不调用 `multi-extractor`
 - ❌ 不评价临床数据质量
 - ❌ 不用二手媒体数字作为数据源
+- ❌ 不读取或兼容 v1 路径，不创建全局 `raw/`、`summary/`、`drug/` 或 `trials/`
+
+所有文件和目录操作必须兼容 Windows。脚本使用 Python 3.10+ 标准库与 `pathlib`；不得依赖 shell 的 `grep`、`find`、`sed` 或其他 Unix 文件搜索命令。
 
 ## 固化规则
 
@@ -33,22 +36,34 @@ description: |
 5. **内容质量优先于来源等级**：付费墙期刊不如可获取的会议摘要
 6. **无 NCT 来源纳入**，填 `—`
 7. **每个数字必须能溯源到原始来源**，二手媒体数字不直接用
+8. **一个来源只占一行**：同一来源只生成一个 summary，因此同一 URL 在 plan 中只出现一次；该行可列出多个适应症，不得按适应症复制 URL
 
-## Step 1: 药物身份锚定
+## Step 1: 配置、根索引与药物身份锚定
 
-读取 `../drug-identity/SKILL.md`，按其中 workflow 执行，获取该药品的标准身份对象：
+1. 首先读取 `{clinical_research_dir}/config.yaml`，配置只能提供一个绝对路径 `research_dir`。配置缺失、无效或路径不可读时停止，按顶层 skill 的初始化流程处理；不得从旧字段或目录结构推断路径。
+2. 配置解析成功后，立即首先读取 `{research_dir}/index.md`。根索引不可读时停止；不得先扫描目录或搜索 web。
+3. 读取 `../drug-identity/SKILL.md`，按其中 workflow 用根索引解析输入名称；未命中时才按该 workflow 搜索可靠来源补充确认。
+4. 获取包含规范身份和已解析目录的完整上下文：
 
 ```text
+research_dir: {配置解析后的绝对路径}
+company_id: {规范归档公司 ID}
 drug_id: {按固定优先级确定}
 drug_aliases: {研发代号/合作方代号/商品名等全集}
 target: {最简形式}
 companies: {研发公司及合作方}
 molecule_type: {ADC/双抗/单抗/小分子}
+drug_dir: {research_dir}/{company_id}/{drug_id}
+drug_page: {drug_dir}/{drug_id}.md
+raw_dir: {drug_dir}/raw
+summary_dir: {drug_dir}/summary
 ```
 
 （drug 展示名从 drug_aliases 中选取通用名。）
 
-如果无法确认药物身份，停下返回用户确认，不进入后续步骤。
+校验所有解析目录都位于 `research_dir` 内并符合当前 2.0 布局。后续步骤原样传递该上下文，不得自行重选 `company_id`、`drug_id` 或目录。此 workflow 不支持 v1 路径，不执行兼容查找或迁移。
+
+如果无法唯一确认药物身份或归档公司，停下返回用户确认，不进入后续步骤。
 
 ## Step 2: 官方临床试验注册库
 
@@ -102,20 +117,20 @@ python {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或�
 4. 二手媒体的数字一律不直接用，不作为 plan 表来源
 5. 媒体 URL 不进入 plan 表
 
-## Step 6.5: 排除已提取来源（增量建档）
+## Step 6.5: 全库排除已提取来源（增量建档）
 
-读取 `{raw_dir}` 下所有 `.md` 文件的 YAML frontmatter `source:` 字段，建立"已提取 URL 集合"：
+使用配置扫描整个 2.0 研究库中所有来源的 YAML frontmatter `source:` 字段，建立“已提取 canonical source 集合”。URL 身份是 raw 中持久化的用户准确提供 URL 或工作流选定的准确 canonical final URL；比较时保持原字符串，不得 percent decode 或改写查询参数、尾部斜杠、大小写及编码形式。本地 PDF 身份是 resolved absolute POSIX path，在 Windows 上必须等于 `Path.resolve().as_posix()`。不得传入或推断全局 `raw_dir`：
 
 ```text
-python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --format urls
+python {clinical_research_dir}/scripts/scan_sources.py --config {clinical_research_dir}/config.yaml --format urls
 ```
 
 对 Step 3-6 收集的候选 URL：
 
-- **已在 raw/ 中提取过**（URL 精确匹配）→ 剔除，不进入 plan 表
+- **已在研究库中提取过**（canonical source 准确字符串匹配）→ 剔除，不进入 plan 表
 - **未提取过** → 保留，进入 Step 7
 
-这样增量建档时只搜索新增数据源，不重复收集已提取的来源。PDF 来源按文件名对比。
+这样增量建档时只搜索新增数据源，不跨药品重复收集已提取的来源。所有工作流都必须比较 raw 中同一个 canonical 值；不得用 percent-decoded URL、PDF 文件名、相对路径或反斜杠路径替代。
 
 ## Step 7: 内容判断与去重
 
@@ -143,6 +158,14 @@ python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --for
 - "临床代码或NCT编号"列填 `—`
 - 只要内容确实包含临床数据
 
+最终按来源 URL 再去重：
+
+- 一个 URL 只能对应一行 plan，也只会产生一个 raw/summary 来源对
+- URL 去重使用将被持久化的准确 supplied/canonical-final 字符串，不做 percent decoding；仅语义等价但字符串不同的 URL 作为近似重复交由人工判断
+- 同一来源覆盖多个适应症时，在该行“适应症”列列出全部适应症（以 `<br>` 或 `；` 分隔），不得为每个适应症复制一行
+- 同一来源同时报告多个试验时，也优先合并在一个来源行中，并在“临床代码或NCT编号”列列出全部代码
+- “同一试验不同数据截止日都保留”是保留不同来源版本，不得导致同一 URL 重复
+
 ## Step 8: 输出 plan 表
 
 ```markdown
@@ -155,7 +178,7 @@ python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --for
 
 | # | 临床代码或NCT编号 | 适应症 | 临床阶段 | 来源类型 | 数据截止日 | 网址链接 | 备注 |
 |---|------------------|--------|---------|---------|-----------|---------|------|
-| 1 | NCT04521625 | NSCLC 1L | Phase III | journal | 2025-06-01 | https://... | NEJM 全文 |
+| 1 | NCT04521625 | NSCLC 1L；NSCLC 2L+ | Phase III | journal | 2025-06-01 | https://... | 同一来源覆盖多个适应症；NEJM 全文 |
 | 2 | EXAMPLE-101 | NSCLC 后线 | Phase II | conference | 2024-12-01 | https://... | ASCO2025 摘要 |
 | 3 | — | 实体瘤 | Phase I | company_release | — | https://... | 首次人体数据 |
 ```
@@ -166,7 +189,7 @@ python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --for
 |---|---|
 | # | 序号 |
 | 临床代码或NCT编号 | NCT 编号或公司试验代号；无则填 `—` |
-| 适应症 | 精确适应症，含治疗线 |
+| 适应症 | 精确适应症，含治疗线；同一来源涉及多个适应症时全部列在同一单元格，不拆行 |
 | 临床阶段 | Phase I / II / III / IV |
 | 来源类型 | `journal`、`conference`、`company_release`、`regulatory`、`other` |
 | 数据截止日 | 数据截止日（cutoff），用于区分同一试验的不同披露版本；来源未给出则填 `—` |
@@ -175,7 +198,7 @@ python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --for
 
 ## Step 9: 输出报告
 
-plan 表不保存到文件，直接返回给用户或下一步（`multi-extractor` 调用）使用。
+plan 表不保存到文件，直接返回给用户或调用方使用。`data-search` 在独立调用和被编排调用时都不得自行持久化 plan；只有 `drug-build` 可按其 workflow 将收到的 plan 保存到根 `{research_dir}/.temp/plans/`。
 
 ```text
 data-search 完成：

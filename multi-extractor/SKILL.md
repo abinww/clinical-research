@@ -1,237 +1,129 @@
 ---
 name: multi-extractor
 description: |
-  临床数据提取编排（供 clinical-research 主 skill 调用）。
-  
-  当用户提到"提取临床数据"且提供 URL/PDF 时触发，作为提取唯一入口：
-  - 单链接/单文件 → spawn 1 个 subagent 执行 clinical-extractor
-  - 多链接/多文件 → 分批 spawn subagent 并行执行 clinical-extractor
-  提取完成后编排 data-verify 验证与 clinical-indexer 归档。
+  临床数据提取编排入口。接收一个或多个 URL/PDF，解析 2.0 身份与路径，
+  按来源提取、独立验证，并按 summary 的多适应症内容派发索引。
 ---
 
 # 临床数据提取 - 编排层
 
-> 本文件由 clinical-research/SKILL.md 路由后读取执行，或由 drug-build 编排调用。
-> 职责：提取临床数据并完成验证与索引。单来源处理单元在 `clinical-extractor`，本文件只负责编排，不重复实现提取细节。
-> 审核独立性由 `data-verify` 子 skill 保证：提取方不得自行判定数据通过，必须由独立 verifier 子 agent 执行 data-verify。
+> 单来源提取由 `clinical-extractor` 完成。验证必须由独立 verifier agent 完成；提取 agent 和主编排 agent 均不得代替 verifier 判定通过。
 
-## 执行原则
+## 2.0 不变量
 
-- 必须按主步骤顺序执行,不得跳过（Step 1 → Step 2 → Step 3 → Step 4 → Step 5 → Step 6）。
-- `raw/` 是原始采集层,只保存工具提取结果,不允许大模型改写、总结、翻译、重排、删减或补全正文。
-- `summary/` 是结构化摘要层,按药品分子目录组织(`summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md`)；summary 直接保存到正式目录，审核章节由 data-verify 后补；后续来源不得覆盖已有快照。
-- 具体文件格式只以 `../schema/summary-spec.md` 和 `../schema/drug-spec.md` 为准;本 workflow 不重复定义格式细节。
-- 如果任一步失败,按该步骤的失败处理规则终止或回修,不得继续污染后续索引。
-- 每轮并发子 agent 数 ≤ 5（OpenClaw 默认 `maxChildrenPerAgent=5`），一轮完成后若还有剩余继续下一轮。
-- **上下文隔离**：提取、验证、索引均通过 spawn subagent 执行，主 agent 只保留编排状态（进度、路径、结果汇总），避免上下文过长导致中断。
+- `config.yaml` 只提供 `research_dir`。
+- 身份解析提供 `company_id`、`drug_id`、`aliases` 等身份字段，以及解析后的 `drug_dir`、`drug_page`、`raw_dir`、`summary_dir`。
+- 目录固定为 `{research_dir}/{company_id}/{drug_id}/`，其中包含 `{drug_id}.md`、`raw/`、`summary/`；根附件目录为 `{research_dir}/attachments/`。
+- 每个来源恰好对应一个 `{drug_id}@{source_label}.md` raw 和一个同名 summary。
+- clinical-extractor 永远不得覆盖或删除；只有本编排层可在用户明确授权后执行下述准确替换流程。
+- 单个 summary 可包含多个适应症，使用 `indications` 数组和正文分节表达；不得拆文件。
+- 不接受或生成 v1 子目录、`drug@indication@source` 文件名或 raw wikilink。
+- 所有脚本调用使用 `python`/`pathlib` 兼容方式；不得假设 `grep`、`find`、`sed` 或 Bash 存在。
 
-## 执行门禁
+## Step 1: 预检与身份
 
-处理任何 URL/PDF 前,必须完成并确认:
+读取配置、`drug-identity/SKILL.md`、`clinical-extractor/SKILL.md`、`data-verify/SKILL.md`、`clinical-indexer/SKILL.md` 以及相关 schema。配置缺少 `research_dir` 或规范不可读时停止。
+
+若调用方已提供完整 2.0 身份与路径上下文，校验后直接使用。否则调用 drug-identity 解析。最终上下文必须至少为：
 
 ```text
-EXTRACTOR PREFLIGHT:
-- ../config.yaml read: yes
-- raw_dir:
-- summary_dir:
-- drug_dir:
-- ../schema/summary-spec.md read: yes
-- ../schema/drug-spec.md read: yes
-- ../drug-identity/SKILL.md read: yes
-- ../data-verify/SKILL.md read: yes
-- ../clinical-indexer/SKILL.md read: yes
+research_dir
+company_id
+drug_id
+aliases
+target / companies / molecule_type
+drug_dir
+drug_page
+raw_dir
+summary_dir
+attachments_dir = {research_dir}/attachments
 ```
 
-如果任一必读文件无法读取,必须停止并报告原因,不得提取、写入或自行猜测目录/格式。
+校验所有解析路径都位于 `research_dir` 内并符合 `company_id/drug_id` 布局，且 `drug_page == drug_dir/{drug_id}.md`。身份不明确或路径不一致时停止，不自行猜测。
 
-## Step 1: 身份解析
+## Step 2: 来源预检与去重
 
-**若调用方已提供身份对象**（drug_id、drug_aliases、target、companies、molecule_type）：
-
-- 直接使用传入值，**跳过 drug-identity 调用**。
-- 例如 drug-build 在 Step 1 已解析身份，调用本 skill 时附上身份对象。
-
-**否则**（如根 SKILL.md 直接路由、用户直接要求提取）：
-
-- 读取 `../drug-identity/SKILL.md`，按其中 workflow 执行（主 agent），获取该药品的标准身份对象：
+从输入提取 URL/PDF 列表；没有来源时要求补充。先计算 canonical source：URL 保持用户准确提供的字符串，或工作流明确采用的准确 canonical final URL，不得 percent decode 或改写查询参数、尾部斜杠、大小写及编码形式；本地 PDF 在 Windows 上使用 `Path.resolve().as_posix()` 得到 resolved absolute POSIX path。先按该值在本批内做准确去重，再扫描全库已有来源：
 
 ```text
-drug_id: {按固定优先级确定}
-drug_aliases: {研发代号/合作方代号/商品名等全集}
-target: {最简形式}
-companies: {研发公司及合作方}
-molecule_type: {ADC/双抗/单抗/小分子}
+python {clinical_research_dir}/scripts/scan_sources.py --config "{config_path}" --format urls
 ```
 
-- 身份确认后 drug-identity 会自动创建/更新 `drug/{drug_id}.md` 骨架。
-- 如果无法确认药物身份，停下返回用户确认，不进入后续步骤。
+必须使用 `--config ... --format urls`，不得改为扫描某个旧 `raw_dir`。将结果与 raw frontmatter 持久化的 canonical `source` 做准确字符串比较，所有工作流必须使用同一个值。URL 不做 percent decoding 或额外归一化；PDF 只以 resolved absolute POSIX path 作准确身份，文件名及已知来源标识仅用于提示近似重复。同标题同日期、不同 PDF 路径或官方镜像与原文等近似重复需人工语义判断。
 
-## Step 2: 来源预检
+- 多来源模式：重复项静默跳过并记录已有匹配。
+- 单来源模式：报告准确匹配的 canonical source、旧 raw/summary 路径和索引引用，并询问是否跳过或替换。没有用户对该准确来源的明确授权时绝不覆盖或删除。
+- 获得明确授权后，必须先唯一确定同名的准确旧 raw/summary 对及其 research-root-relative POSIX 来源身份，枚举药品页、该 summary 涉及的全部适应症页和根索引中的所有准确身份引用。若旧配对不完整、存在多个候选或引用无法完整枚举，停止且不做任何删除。
+- 确认替换集合后，只删除这一个准确旧 raw/summary 对和所有枚举出的准确索引引用，不删除附件、其他来源、近似文本或其他索引内容。清理后重新检查该配对和所有准确引用均不存在；有残留则停止，不调用 extractor。
+- 仅在上述清理完整完成后，才以相同 canonical source 和目标 `source_label` 调用 clinical-extractor，将其视为不存在的全新目标。不得要求 extractor 覆盖、删除或清理。替换后续提取失败时如实报告，不恢复或改动其他来源。
 
-对本次全部来源（URL/PDF 列表）统一执行预检：
+对 URL 做轻量可达性检查，失败时尝试官方同文镜像；若明确改用镜像或重定向后的 canonical final URL，后续持久化和比较必须统一使用选定的准确 URL。PDF 不在预检中重复提取。为每个待处理来源分配一个 Windows 安全、在该药物下唯一且稳定的 `source_label`。目标文件名固定为 `{drug_id}@{source_label}.md`；存在冲突时使用描述 trial、abstract、analysis 等差异的最短语义稳定后缀，例如 `_TrialABC`、`_Abstract1234`、`_FinalAnalysis`，不得追加 `_2`、`_3` 等不透明序号。
 
-### 2.1 识别来源
+## Step 3: 按来源提取
 
-从当前或上一条对话中提取来源列表：
-
-- 单个 URL 或 PDF：单来源模式，进入 2.2。
-- 多个 URL/PDF：多来源模式，全部列出，进入 2.2。
-- 不包含 URL 或 PDF:要求用户补充来源,终止执行。
-
-### 2.2 统一去重
-
-扫描 `{raw_dir}` 下所有 `.md` 文件的 YAML frontmatter `source:` 字段，与本次来源对比：
+每个来源派发一个隔离的 clinical-extractor agent，每轮最多 5 个。prompt 注入完整身份和路径上下文：
 
 ```text
-python {clinical_research_dir}/scripts/scan_sources.py --raw-dir {raw_dir} --format urls
-```
-
-去重规则：
-
-- **URL 精确匹配**：直接对比 URL 字符串。
-- **近似重复**：同标题+同日期，或同一事件的多门户发布（如 news.bms.com ↔ investors.biontech.de 同日同内容），识别为重复，只保留一个。
-- **本次来源之间重复**：只保留一个，其余标记跳过。
-
-重复来源处理：
-
-- **单来源**：向用户询问（[1]跳过 / [2]重新提取并覆盖旧文件——级联删除旧 raw + 关联 summary 后重提）。
-- **多来源（静默模式）**：重复来源一律跳过，不询问、不重新提取。
-
-### 2.3 URL 可达性探测
-
-对每个待提取 URL 做轻量可达性探测（HEAD 请求或 basic fetch）：
-
-- 404/403/连接失败 → 立即标记为失败项（尝试找同文镜像，找不到则剔除），不进入提取队列。
-- PDF 来源不在预检阶段提前提取。将每个 PDF 直接分配给一个 `clinical-extractor` subagent，由该 subagent 完成一次提取和 fallback；这样多 PDF 来源不会重复提取。
-
-### 2.4 分配来源身份
-
-为每个待提取来源分配：
-
-- `raw_filename`（raw 基础名，确保本次来源间唯一）
-- `source_label`（如 `ASCO2026`；本次来源间冲突时追加最短必要后缀 `_2`、`_3`，确保唯一）
-- `indication_id`：按 `indication-spec.md` 的规范命名对每个来源的适应症统一规范化（如 `NSCLC 1L` → `NSCLC_1L`），确保多 subagent 结果一致；治疗线无法判断时保留 `line: null`，不得猜测为 1L
-- 注明"本源主适应症"展示名（多适应症源时），供提取单元生成主/次 summary 参考
-
-## Step 3: 并行提取
-
-对预检后待提取的来源列表执行提取：
-
-```text
-- 多来源：每轮 spawn ≤5 个提取子 agent，每个子 agent 处理 1 个来源，
-  读取并执行 clinical-extractor/SKILL.md
-- 单来源：spawn 1 个提取子 agent 执行 clinical-extractor/SKILL.md
-- 一轮完成后若还有剩余来源，开始下一轮
-```
-
-每个提取子 agent 的 prompt 必须包含（**注入完整上下文，子 agent 不重读 config/schema**）：
-
-```text
-读取 clinical-extractor/SKILL.md，处理以下单个来源：
-{URL 或 PDF}
-
-身份与命名参数（直接使用，不自行解析）：
-- drug_id: {值}
-- drug_aliases: {别名列表}
-- target: {值}
-- indication_id: {规范化值}
-- 本源主适应症展示名: {值}（若含次要适应症也生成对应 summary，indication_id 按规范命名）
-- raw_filename: {值}
-- source_label: {值}
-
-目录与格式（无需重新读取文件）：
-- config.yaml 路径: ../config.yaml
+读取 clinical-extractor/SKILL.md，处理这一个来源：{URL 或 PDF}
+配置与身份路径：
+- config_path: {config_path}
+- research_dir: {research_dir}
+- company_id: {company_id}
+- drug_id: {drug_id}
+- aliases: {aliases}
+- target / companies / molecule_type: {值}
+- drug_dir: {drug_dir}
+- drug_page: {drug_page}
 - raw_dir: {raw_dir}
 - summary_dir: {summary_dir}
-- summary frontmatter 模板与命名格式、SUMMARY WRITE GATE 见 summary-spec.md（若需确认格式可读取该文件）
-
-返回：来源、raw/ 路径、summary/ 路径列表、结果（成功/失败/跳过/发现重复）、失败原因
+- attachments_dir: {research_dir}/attachments
+- source_label: {source_label}
+- canonical source: {准确 URL 或 PDF resolved absolute POSIX path}
+要求：一个来源只生成一对同名 raw/summary；一个 summary 用 indications 数组和正文分节容纳所有适应症。
 ```
 
-处理规则：
+成功后用 harness 文件工具核对两个返回路径存在、同名、summary canonical link 指向该 raw，并确认每个来源只返回一个 summary。失败项携带原因重试一次；仍失败则记录，不影响其他来源。PDF 图片工具不可用属于警告而不是伪造图片或重复整个文本提取的理由。
 
-- 子 agent 返回"发现重复"：由主 agent 按 Step 2.2 处理。
-- **落盘核对**：子 agent 返回"成功"后，主 agent 必须用 harness 的文件存在检查工具核对返回的 raw/ 与 summary/ 路径是否真的存在；文件不存在视为失败。
-- **失败重试**：某个来源失败（提取失败、空内容、非临床资料、超时、落盘核对不通过）→ **立即带原因重试一次**；重试提示词附"上次失败原因 + 建议（换镜像/换提取方式）"。重试仍失败 → 记录失败项，不影响其他来源。
-- **超时控制**：子 agent 单任务超时 12-15 分钟，超时自动 kill 并重试一次。
-- 全部来源处理完毕后，汇总全部 summary 路径列表，进入 Step 4。
-- **进度汇报**：每批完成时主动向用户汇报一次（"第 X/Y 批完成，N 成功 M 失败"），不等用户询问；失败项发现即说明处理方案。
+## Step 4: 独立验证
 
-## Step 4: 并行验证
-
-### 4.1 筛选待验证 summary
-
-使用 **Step 3 汇总的本次 summary 路径列表**（不扫描全目录，避免误审其他药物的 summary），筛选出**未审核**的（frontmatter `verification` 非 `passed` 或缺失）：
-
-得到待验证 summary 列表。
-
-### 4.2 并行验证
+只使用本轮成功生成的 summary 路径，不扫描全目录。每个 summary 派发一个独立 data-verify agent，每轮最多 5 个：
 
 ```text
-- summary 数量 ≤ 5 时：一次性 spawn 全部 verifier（每 summary 一个 verifier）
-- summary 数量 > 5 时：分轮，每轮 spawn ≤5 个 verifier 子 agent
-- 每个 verifier 负责 1 个 summary（独立审核，避免一个 verifier 处理多个导致遗漏）
-- 一轮完成后若还有剩余 summary，开始下一轮
+按 data-verify/SKILL.md 独立审核：{summary_path}
+路径上下文：research_dir={research_dir}, raw_dir={raw_dir}, summary_dir={summary_dir}
+从 canonical 来源链接按 summary 所在目录解析 raw；覆盖 indications 数组中所有适应症分节。
 ```
 
-每个 verifier 的 prompt 必须包含：
+- verifier 与提取 agent 必须不同；不得把提取结论当作证据。
+- verifier 不联网、不修改正文，只写审核章节和 verification 字段。
+- `FAIL` 由主编排根据 verifier 指出的证据问题修正正文，再派发新的独立 verifier 复核该 summary。连续两轮仍失败则停止该项并报告。
+- `WARN` 可继续，但必须列入最终人工复核项。
+
+## Step 5: 多适应症索引派发
+
+只将同时满足 `verification: passed`、`verification_fail_count: 0`、末尾审核章节存在且审核章节中没有任何 `FAIL` 的本轮 summary 派发给 clinical-indexer。任一条件不满足均记录为索引不合格，不得派发。索引以 summary 为工作单元，但必须展开其 `indications` 数组：
 
 ```text
-按 data-verify/SKILL.md 验证以下 summary：
-{单个 summary 路径}
-读取其 `> 来源原文:` 指向的 raw 文件，写入审核章节
-与 verification 字段；返回 PASS/WARN/FAIL 数量
+读取 clinical-indexer/SKILL.md，以部分模式归档：
+- summary: {summary_path}
+- drug_page: {drug_page}
+- identity/path context: {完整 2.0 上下文}
+- indication dispatch: 读取 indications 数组及对应正文分节；同一 summary 更新一次 drug_page，并分别更新每个适应症索引页面；所有索引项引用同一个 summary 路径。
 ```
 
-规则：
+不得按适应症复制 summary 或多次重复写入 drug 页面。索引器若只支持单个 `indication_id`，视为不兼容 2.0：停止该 summary 的索引并报告，不得退回旧命名/布局。索引失败不回滚已验证的 raw/summary。
 
-1. 读取 `../data-verify/SKILL.md`，按其中 workflow 执行。
-2. 每个 summary 必须由独立的 data verifier 子 agent 执行 data-verify workflow（提取方不得自行替代审核）。
-3. 审核失败处理：
-   - 存在 `FAIL`：主 agent 按 verifier 输出的问题修正对应 summary 正文（数据错误处），然后**只重新 spawn verifier 验证该 FAIL 的 summary**，已通过的 summary 不重跑。重复 FAIL 2 次 → 记入失败项报告人工处理。
-   - 存在 `WARN`：可以继续，但必须在最终返回报告中列出 WARN 项，提示用户人工复核。
-
-## Step 5: 调用 clinical-indexer
-
-spawn 1 个 agent 执行增量归档（**部分模式**）：
+## Step 6: 报告
 
 ```text
-读取 clinical-indexer/SKILL.md，按其中增量归档 workflow 执行（部分模式）：
-- 使用以下 summary 路径列表（本次新增，不扫描全目录）：
-  {本次 summary 路径列表}
-- 按身份字段计算期望页面并补齐 drug/ 与 indication/
-- 返回归档统计
+- 输入来源 / 跳过重复 / 成功 / 失败数量
+- canonical source 列表；URL 保留值及 PDF resolved absolute POSIX path
+- 明确授权替换、已删除的准确 raw/summary 对、已清除的准确索引引用及替换结果
+- 每个来源唯一的 raw 与 summary 路径
+- 每个 summary 的 indications 数组
+- PDF 附件及未能渲染的重要图片警告
+- PASS/WARN/FAIL 汇总与人工复核项
+- 索引合格/不合格数量及不合格条件（verification、fail_count、审核章节、审核 FAIL）
+- drug 索引和逐适应症索引结果
+- 失败项及原因
 ```
-
-- 归档完成后，主 agent 用 harness 的文件存在检查工具核对 `drug/{drug_id}.md` 与相关 indication/ 页面是否实际更新；未更新视为归档失败。
-- 若 indexer 归档失败，报告 `summary/` 已生成但索引未更新；不回滚已写入的 `summary/` 文件。
-
-## Step 6: 输出报告
-
-```text
-- 待提取来源: N 个（跳过 X 个 / 失败 Y 个）
-- raw/ 文件路径列表
-- summary/ 文件路径列表
-- 数据一致性审核结果（PASS/WARN/FAIL 汇总；如有 WARN 列出人工复核项）
-- indexer 归档结果
-- 失败项: （列表及原因；如有）
-- 提取的关键数据摘要
-```
-
-## 常见问题
-
-### Q: 单链接也要 spawn 吗？
-
-要。spawn 可以隔离上下文——提取任务 token 消耗大（40k-150k/任务），主 agent 亲自执行会导致上下文过长中断。单链接同样 spawn 1 个 subagent。
-
-### Q: 验证和索引为什么也要 spawn？
-
-同理，都是为了主 agent 上下文隔离。主 agent 只保留编排状态（进度、路径、结果汇总）。
-
-### Q: 失败重试多少次？
-
-提取失败：立即带原因重试一次，仍失败则记录失败项。验证 FAIL：修正后重验一次，重复 FAIL 2 次记入失败项。drug-build 流程末尾会对 plan 表未完成行整体重跑一次 multi-extractor；每行总尝试上限 2 次，之后不再重试。
-
-### Q: 如何避免子 agent 重复读 schema 浪费时间？
-
-派发 prompt 已注入身份参数、目录路径、格式要点；子 agent 无需重读 config。summary-spec 仅在生成 summary 需要确认格式细节时读取。

@@ -1,4 +1,4 @@
-"""List raw Markdown files not referenced by a summary."""
+"""List clinical-research 2.0 raw files not referenced by summaries."""
 
 from __future__ import annotations
 
@@ -7,41 +7,53 @@ from pathlib import Path
 import sys
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-from config import configured_path, read_config  # noqa: E402
-from scan_sources import processed_sources, raw_sources  # noqa: E402
+from config import load_config  # noqa: E402
+from scan_sources import research_sources  # noqa: E402
+
+
+def find_unprocessed(research_dir: Path, company_id: str | None = None, drug_id: str | None = None) -> list[str]:
+    """Return pending raw identities, optionally filtered by layout roles."""
+    raw, processed = research_sources(research_dir)
+    pending = []
+    for _, source in raw:
+        company, drug, *_ = source.split("/")
+        if company_id is not None and company != company_id:
+            continue
+        if drug_id is not None and drug != drug_id:
+            continue
+        if source not in processed:
+            pending.append(source)
+    return sorted(pending)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="找出未被摘要的 raw/ 文件")
+    parser = argparse.ArgumentParser(description="找出未被摘要的 clinical-research 2.0 raw 文件")
     parser.add_argument("--config", type=Path, default=SCRIPT_DIR.parent / "config.yaml")
+    parser.add_argument("--research-dir", type=Path)
+    parser.add_argument("--company-id")
+    parser.add_argument("--drug-id")
+    parser.add_argument("--quiet", action="store_true", help="只输出持久相对路径")
     args = parser.parse_args()
 
     try:
-        config = read_config(args.config)
-        raw_dir = configured_path(config, "raw_dir")
-        summary_dir = configured_path(config, "summary_dir")
+        research_dir = args.research_dir.resolve() if args.research_dir else load_config(args.config).research_dir
+        pending = find_unprocessed(research_dir, args.company_id, args.drug_id)
     except (OSError, ValueError) as exc:
         print(f"[ERROR] 无法读取配置: {exc}", file=sys.stderr)
         return 1
 
-    print("扫描目录:")
-    print(f"  raw_dir: {raw_dir}")
-    print(f"  summary_dir: {summary_dir}")
-    print()
-
-    processed = processed_sources(summary_dir)
-    print(f"已摘要文件数: {len(processed)}")
-    print()
+    if args.quiet:
+        for source in pending:
+            print(source)
+        return 0
+    print(f"扫描目录: {research_dir}")
     print("未处理的 raw 文件:")
-    pending = [source for _, source in raw_sources(raw_dir) if source not in processed]
     for source in pending:
         print(f"  {source}")
-    print()
     print(f"总计: {len(pending)} 个文件待处理")
-    if not pending:
-        print("raw/ 目录下无新增文件需要处理")
     return 0
 
 

@@ -1,177 +1,127 @@
 ---
 name: clinical-extractor
 description: |
-  临床数据提取单元（供 clinical-research 主 skill 编排调用）。
-  
-  不从主接口直接触发，由编排层按需调用。
+  临床数据单来源提取单元。由 multi-extractor 或 batch-extractor 调用，
+  将一个 URL 或 PDF 写成一个 raw 和一个支持多适应症的 summary。
 ---
 
 # 临床数据提取 - 单来源单元
 
-> 本文件不从主接口直接触发，由编排层按需调用。
-> 职责：把**单个来源**（URL 或 PDF）处理为 `raw/` 文件 + `summary/` 文件。
-> 本 skill 只做提取，不含验证（data-verify）、索引（clinical-indexer）、身份解析（drug-identity）——这些由编排方统一处理。
+> 不从主接口直接触发。本 skill 只负责单来源提取，不负责身份解析、独立验证或索引。
 
-## 输入
+## 2.0 不变量
 
-- 单个来源：一个 URL 或一个 PDF 文件路径
-- 调用方传入的身份与命名参数：
-  - `drug_id`（唯一识别名，用于 summary 目录与文件名）
-  - `drug_aliases`（别名全集，写入 summary frontmatter）
-  - `target`（最简形式）
-  - `raw_filename`（raw 基础名，调用方已保证唯一）
-  - `source_label`（来源标签，调用方已保证唯一）
+- 配置只有 `research_dir`。不得从配置读取或推测 `raw_dir`、`summary_dir`、`drug_dir`。
+- 调用方必须提供完整身份和已解析路径上下文：至少包含 `company_id`、`drug_id`、`aliases`、`drug_dir`、`drug_page`、`raw_dir`、`summary_dir`；其他身份字段（如 `target`、`companies`、`molecule_type`）原样使用。
+- 一个来源恰好创建一个 raw 和一个 summary。两者文件名均为 `{drug_id}@{source_label}.md`。
+- 一个 summary 通过 frontmatter 的 `indications` 数组及对应正文分节承载该来源的全部适应症；不得按适应症拆成多个 summary。
+- summary 的规范来源行只能是相对 Markdown 链接：`> 来源原文: [label](../raw/file.md)`。不得写 wikilink、绝对路径或旧布局路径。
+- 本 extractor 是严格 create-only：无论是否收到替换请求或用户授权，都不得覆盖、删除或修改任何既有 raw、summary 或索引引用。替换清理由 multi-extractor 在调用本 skill 前完成，本 skill 只接收清理后不存在的全新目标。
+- 不提供 v1 布局、文件名或链接兼容逻辑。
 
-## 执行门禁
+## 输入与门禁
 
-处理前必须确认：
+输入为一个 URL 或一个 PDF 路径，以及调用方提供的：
 
 ```text
-- ../config.yaml read: yes
-- raw_dir:
-- summary_dir:
-- ../schema/summary-spec.md read: yes
+config_path: {clinical_research_dir}/config.yaml
+research_dir: {配置解析后的绝对路径}
+company_id: {值}
+drug_id: {值}
+aliases: {别名全集}
+target / companies / molecule_type: {如有}
+drug_dir: {research_dir}/{company_id}/{drug_id}
+drug_page: {drug_dir}/{drug_id}.md
+raw_dir: {drug_dir}/raw
+summary_dir: {drug_dir}/summary
+source_label: {Windows 安全且在该药物下唯一的短标签}
 ```
 
-任一必读文件无法读取，停止并报告原因。
-
-## Step 1: 确认输入
-
-- 单个 URL：进入 Step 2。
-- 单个 PDF 文件路径：进入 Step 2。
-- 其他输入：返回错误，终止。
-
-同时准备以下信息：
-
-- 原始来源标识:URL 或 PDF 文件名。
-- 来源发布日期:从原文提取明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `published_date: null`，不得用当前日期代替。
-- summary 生成日期:写入 `created`，使用实际生成日期。
-- `drug_id`: 使用调用方传入的值，不自行解析。
-- `drug`: 从调用方传入的 `drug_aliases` 中选取通用名作为展示名。
-- `drug_aliases`: 使用调用方传入的别名全集。
-- `target`: 使用调用方传入的值。
-- `indication_id`: 使用调用方传入的规范化值；若实际内容适应症与传入值不符，以实际为准并在返回中说明。
-- `source_label`: 使用调用方分配的值，不自行生成。
-- `source_type`: 标准化为 `journal`、`conference`、`company_release`、`regulatory` 或 `other`。
-- `published_date`: 只记录来源明确的发布日期、会议日期或期刊在线发表日期；无法确认时写 `null`，不得用提取日期代替。
-- `combination_regimen`: 标准化联合用药方案；单药也必须明确记录。
-- `phase`: 从原文识别临床阶段（Phase I/II/III/IV）；无法确定时写 `null` 并备注"待确认"，不得猜测。
-- `clinical_match_key`: 按 `drug_id|combination_regimen|indication_id|phase` 生成，标识同一临床记录（保留字段）；drug 页表格组织以 `trial_name` 为准。phase 无法确定时该段留空（如 `ABC123|化疗|NSCLC_1L|`）。临床试验代码只能作为参考字段。
-
-## Step 2: 生成并写入 raw/
-
-### 2.1 提取原始内容
-
-URL 来源调用:
-
-```
-tavily_extract urls=<URL> extract_depth=advanced include_images=true
-```
-
-**URL fallback 链**（按顺序尝试，直到成功）：
-
-1. 首选 `tavily_extract`（advanced，含图片）
-2. 若 `tavily_extract` 不可用/失败/被反爬 → 改用 `web_fetch` 抓取
-3. 若 `web_fetch` 403/反爬 → 返回失败并附建议（找 SEC/镜像/其他可访问来源），由调用方决定镜像替换
-4. 任何一步成功即停止，raw 只保存成功来源的完整原始输出
-
-PDF 来源按以下顺序处理：
-
-1. 优先使用当前 harness 的 PDF 读取能力或系统中的 `pdftotext`。
-2. 不可用或效果差时使用 `nano-pdf`。
-3. 最后尝试标准库 fallback：
+处理前确认：
 
 ```text
-nano-pdf --file <pdf路径> --action read
-python {clinical_research_dir}/scripts/pdf_extract_fallback.py <pdf路径>
+EXTRACT WRITE GATE:
+- config_path 已读取且只有 research_dir 参与路径解析: yes
+- 身份对象与上述解析路径齐全且彼此一致: yes
+- drug_page 存在: yes
+- summary-spec.md 已读取: yes
+- raw 与 summary 目标文件名均为 {drug_id}@{source_label}.md: yes
+- 两个目标文件均不存在: yes
 ```
 
-标准库 fallback 只支持有限的、未加密文本 PDF，不能保证中文、表格或扫描型 PDF 的结果。若以上方式均不可用或失败，必须报告 PDF 无法提取，不得由模型重建 raw 正文。
+任一项不是 `yes` 时停止。任一目标已存在时返回“发现重复”，不得覆盖、删除、修改、追加序号或清理索引，即使调用方声称替换已获授权也一样。`source_label` 和路径组件必须是 Windows 安全名称；冲突标签必须由调用方改为描述 trial、abstract、analysis 等来源差异的语义稳定标签，不得使用 `_2` 等不透明序号。
 
-### 2.2 写入 raw 文件
+## Step 1: 提取来源
 
-在提取结果前添加 YAML frontmatter:
+同时记录：canonical source、原文明确给出的 `published_date`、实际提取日期 `created`、来源类型。URL 的 canonical source 是用户准确提供的 URL，或工作流明确采用的准确 canonical final URL；保持该字符串，不得 percent decode 或改写查询参数、尾部斜杠、大小写及编码形式。本地 PDF 的 canonical source 必须先解析为绝对 POSIX 路径；Windows 上使用 `Path.resolve().as_posix()`。无法确认发布日期或 phase 时写 `null`，不得以当前日期或推测替代。
+
+### URL
+
+优先使用当前 harness 的高级网页提取能力并包含图片；失败后使用可用的网页抓取工具。遇到 403、反爬或空正文时可尝试同文官方镜像；仍失败则报告，不得由模型重建 raw。
+
+- raw 保存成功提取工具返回的完整正文，只允许增加 YAML frontmatter。
+- raw `source` 保存上述准确 URL。后续去重和替换必须与该持久值做准确字符串比较，不得使用 percent-decoded 或其他归一化变体。
+- URL 图片保持远程 URL。重要临床图可在 summary 中直接嵌入远程 URL，不下载到 `attachments/`。
+- 抓取到的广告、站点装饰图不写入 summary。
+
+### PDF
+
+按可用性优先使用当前 harness/PDF 工具读取；其次使用系统 `pdftotext` 或 `nano-pdf`；最后可运行：
+
+```text
+python {clinical_research_dir}/scripts/pdf_extract_fallback.py "{pdf_path}"
+```
+
+命令必须可在 Windows PowerShell 中运行，不依赖 Bash。所有文本提取方式均失败时停止，不得由模型重建 raw。
+
+读取和写入前解析 PDF 路径，raw `source` 固定保存 resolved absolute POSIX path；Windows 上必须是 `Path.resolve().as_posix()` 的结果。调用方预检、全库去重和本 skill 返回报告都使用这同一个 canonical 值，不得退化为文件名或相对路径。
+
+对包含关键临床表格、Kaplan-Meier 曲线或试验设计图的 PDF：
+
+1. 使用可用 harness/PDF 渲染或截图工具输出到 `{research_dir}/attachments/`。
+2. 优先裁剪到图表区域；无法可靠裁剪时保存包含该图的完整页面。
+3. 使用 Windows 安全且可追溯的名称，例如 `{drug_id}@{source_label}@figure-01.png`，不得覆盖已有附件。
+4. summary 从自身目录以相对路径引用根附件，例如 `../../../attachments/{file}`。
+5. 若没有可用渲染/截图能力或渲染失败，文本提取仍可继续；省略无法生成的本地图片，并在返回报告中明确列出“PDF 重要图片未生成”及原因，不得伪造附件。
+
+## Step 2: 写入 raw
+
+写入 `{raw_dir}/{drug_id}@{source_label}.md`：
 
 ```yaml
 ---
-source: {URL 或 PDF文件名}
+source: {准确 URL，或 PDF 的 resolved absolute POSIX path}
 published_date: {YYYY-MM-DD 或 null}
 created: {YYYY-MM-DD}
 ---
 ```
 
-`created` 是 raw 实际提取日期，不是来源发布日期；`published_date` 只能填写原文明确提供的来源日期。
+frontmatter 后必须是工具提取的完整原始输出。禁止压缩、总结、翻译、重排、去重、润色或补全正文。若需从官方 API 补充缺失 metadata，只能在原文末尾追加注明来源和获取日期的独立章节，不得修改原始输出。
 
-写入:
+正文为空、明显不是目标临床资料或无法原样保留时，删除本次尚未配对完成的输出并返回失败，不能留下孤立的新文件。
 
-```
-write path={raw_dir}/{raw_filename}.md content={YAML frontmatter + 原始提取内容}
-```
+## Step 3: 写入单个 summary
 
-### 2.3 raw 质量要求
+从刚写入的 raw 生成 `{summary_dir}/{drug_id}@{source_label}.md`，格式遵守 `../schema/summary-spec.md`，并以本文件的 2.0 不变量覆盖其中任何旧布局示例。
 
-- `raw/` 正文必须是 `tavily_extract` / `pdftotext` / `nano-pdf` 返回内容的完整原始输出。
-- 禁止使用大模型对正文做任何压缩、总结、翻译、重排、去重、润色、结构化或补全。
-- 只允许添加 YAML frontmatter。
-- 如果无法保留工具原始输出,必须终止;不得用模型重建 raw。
-- 如果提取失败、正文为空、或明显不是临床资料,返回错误报告并终止后续步骤。
+- H1 后紧接：`> 来源原文: [{source_label}](../raw/{drug_id}@{source_label}.md)`。
+- frontmatter 使用身份对象，并包含 `indications` 数组。数组中每项至少给出规范 `indication_id` 和展示名；只纳入原文实际支持的适应症。
+- 正文为每个适应症建立清晰分节，并在该分节内放置对应的有效性、安全性和试验设计内容。跨适应症共用的来源信息可只写一次，但数据不得串组。
+- `combination_regimen`、phase、cohort、治疗线和数据时间点无法确认时明确写“未披露”或 `null`，不得推断。
+- 图片遵循 Step 1：URL 图保留远程链接；PDF 图只引用已实际生成的根附件。
+- 提取方不得写 `verification: passed`，也不得自行完成审核。初次写入固定使用 `verification: pending` 和 `verification_fail_count: null`；末尾审核章节及最终状态由独立 data-verify agent 写入。
 
-**raw 字段补全规范**：若原始提取内容缺失关键 metadata（如 CTG 页缺失 Sponsor/Phase/Enrollment/Status），允许以**追加段**方式补全：
-
-- 在 raw 正文末尾追加补充段，格式：
-  ```markdown
-  ## 补充信息（{来源}，{获取日期}）
-  - 字段: 值
-  ```
-- **不覆盖、不修改**原始提取内容；补全段必须标注来源与获取日期
-- 补全来源优先官方 API（如 `api.clinicaltrials.gov/v2/studies/{NCT}`）
-
-## Step 3: 生成并保存 summary/
-
-目标:从 `raw/` 生成规范化临床摘要,保存到 `summary/{drug_id}/` 子目录下。审核由 data-verify 在后续步骤完成，不在本步骤执行。
-
-### 3.1 生成 summary 内容
-
-读取 `../schema/summary-spec.md`。
-
-基于 Step 2 写入的 `raw/` 文件生成 summary。摘要结构、字段、章节、表格均必须遵守 `summary-spec.md`。摘要的 H1 标题后必须包含 `> 来源原文: [[raw/{当前 raw 文件名}.md]]` 一行,用于在 Obsidian 中建立 direct wikilink。
-
-**不确定不写死**：研究类型、剂量设计、治疗线、适应症范围等无法从原文确认时，必须标注"未披露"或"raw 未披露"，禁止合理推断、禁止写为确定事实（如原文未提"单次剂量递增/SAD"，不得写成 SAD 设计）。
-
-生成的 summary **不包含** 数据一致性审核章节和 verification 字段（由 data-verify 在后续步骤写入），其余内容完整。
-
-**多适应症来源**：若来源内容包含多个适应症（如一个 poster 同时含 ES-SCLC 与 EGFR-NSCLC），按调用方派发时注明的"主适应症"生成主 summary；若含明确的次要适应症，也生成对应 summary（各自独立文件）。
-
-### 3.2 写入 summary 文件
-
-写入前必须通过:
-
-```text
-SUMMARY WRITE GATE:
-- summary-spec.md read: yes
-- summary filename matches {drug_id}@{indication_id}@{source_label}.md: yes
-- "> 来源原文:" wikilink points to current raw file: yes
-```
-
-如果任一项不是 `yes`,不得写入 `summary/` 文件。
-
-写入前必须确保子目录存在:
-
-```
-python {clinical_research_dir}/scripts/ensure_directories.py "{summary_dir}/{drug_id}"
-write path={summary_dir}/{drug_id}/{summary_filename} content={符合 summary-spec.md 的完整 summary 内容}
-```
+写入前再次确认 raw 已存在、canonical source link 精确指向它、summary 只有一个且文件名匹配。summary 写入失败时，报告配对失败并移除仅由本次任务新建的 raw；不得触碰任何既有文件。
 
 ## 返回
 
-返回给调用方（multi-extractor）：
-
 ```text
-- 来源: {URL 或 PDF 文件名}
-- raw/ 路径: {raw_dir}/{raw_filename}.md
-- summary/ 路径列表: （一个或多个）
-- 结果: 成功 / 失败 / 跳过 / 发现重复
-- 失败原因或重复信息: （如有）
+- 来源: {raw frontmatter 中持久化的 canonical source}
+- raw: {raw_dir}/{drug_id}@{source_label}.md
+- summary: {summary_dir}/{drug_id}@{source_label}.md
+- indications: {数组}
+- attachments: {本次实际生成的 PDF 图片列表}
+- warnings: {图片不可用等非致命问题}
+- 结果: 成功 / 失败 / 发现重复
+- 原因: {如有}
 ```
-
-**发现重复**：若执行中发现该来源已在 `raw/` 存在（预检后新增的极端情况），不得询问用户，直接返回"发现重复"及匹配到的已有 raw/summary 路径，由调用方处理。

@@ -2,8 +2,8 @@
 """检查 drug-build plan 表的完成进度（纯数据工具，不参与流程控制）。
 
 对 plan 表每一行的 URL，按三级判断确定状态：
-1. raw_dir 下是否有 frontmatter source: 匹配该 URL
-2. 该 raw 是否被 summary_dir 下的 `> 来源原文:` 引用
+1. 在 research_dir 的所有药品 raw/ 中按 frontmatter source 全局定位唯一 raw
+2. 在该药品 summary/ 中按规范相对 Markdown 链接定位唯一 summary
 3. 对应 summary 的 verification 字段是否为 passed
 
 只输出每个 URL 的状态（plan 表进度），不输出"待处理/失败项"等流程分类——
@@ -16,66 +16,32 @@
 """
 
 import argparse
-import os
+from pathlib import Path
 import re
 import sys
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+SHARED_SCRIPTS = REPOSITORY_ROOT / "scripts"
+if str(SHARED_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SHARED_SCRIPTS))
 
-def parse_config(config_path: str) -> tuple[str, str]:
-    """从 config.yaml 解析 raw_dir 与 summary_dir。"""
-    raw_dir = None
-    summary_dir = None
-    with open(config_path, "r", encoding="utf-8-sig") as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("raw_dir:"):
-                raw_dir = extract_value(line)
-            elif line.startswith("summary_dir:"):
-                summary_dir = extract_value(line)
-    if not raw_dir or not summary_dir:
-        raise ValueError("config.yaml 缺少 raw_dir 或 summary_dir")
-    return expand_path(raw_dir), expand_path(summary_dir)
+from config import load_config  # noqa: E402
+from layout import discover_drugs  # noqa: E402
+from scan_sources import (  # noqa: E402
+    frontmatter_value,
+    read_frontmatter,
+    source_path,
+    summary_audit_passed,
+)
 
 
-def extract_value(line: str) -> str:
-    """提取 `键: 值` 行中的值，去掉引号与行内注释。"""
-    value = line.split(":", 1)[1].strip()
-    value = value.split("#")[0].strip()
-    value = value.strip("\"'")
-    return value
+MARKDOWN_LINK = re.compile(r"^\[[^\]\r\n]*\]\(([^\r\n]+)\)$")
 
 
-def expand_path(path: str) -> str:
-    """展开 ~ 为用户主目录。"""
-    return os.path.expanduser(path)
-
-
-def read_frontmatter(text: str) -> str:
-    """提取 markdown 文件的 YAML frontmatter（--- 之间的内容），无则返回空串。"""
-    if not text.startswith("---"):
-        return ""
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return ""
-    return parts[1]
-
-
-def frontmatter_has_key(frontmatter: str, key: str, expected_value: str = None) -> bool:
-    """检查 frontmatter 中是否存在 `key: value` 行。"""
-    pattern = re.compile(rf"^{re.escape(key)}\s*:\s*(.*)$", re.MULTILINE)
-    match = pattern.search(frontmatter)
-    if not match:
-        return False
-    if expected_value is None:
-        return True
-    value = match.group(1).strip().strip("\"'")
-    return value == expected_value
-
-
-def extract_urls_from_plan(plan_path: str) -> list[str]:
+def extract_urls_from_plan(plan_path: str | Path) -> list[str]:
     """从 plan 表 markdown 表格中提取"网址链接"列（第 7 列）的 URL。"""
     urls = []
-    with open(plan_path, "r", encoding="utf-8-sig") as f:
+    with Path(plan_path).open("r", encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
             if not line.startswith("|"):
@@ -86,65 +52,67 @@ def extract_urls_from_plan(plan_path: str) -> list[str]:
             if cells[6] in {"网址链接", "---"} or re.fullmatch(r"-+", cells[6]):
                 continue
             url = cells[6].strip()
+            match = MARKDOWN_LINK.fullmatch(url)
+            if match:
+                url = match.group(1).strip()
+            elif url.startswith("<") and url.endswith(">"):
+                url = url[1:-1].strip()
             if url and url != "—":
                 urls.append(url)
     return urls
 
 
-def find_raw_for_source(raw_dir: str, source: str) -> str | None:
-    """在 raw_dir 下查找 frontmatter source: 匹配的文件路径。"""
-    for filename in os.listdir(raw_dir):
-        if not filename.endswith(".md"):
+def find_raws_for_source(research_dir: str | Path, source: str) -> list[Path]:
+    """Find every nested drug raw whose semantic source identity is *source*."""
+    matches = []
+    for drug in discover_drugs(research_dir):
+        if not drug.raw.is_dir():
             continue
-        path = os.path.join(raw_dir, filename)
-        try:
-            with open(path, "r", encoding="utf-8-sig") as f:
-                content = f.read()
-        except (OSError, UnicodeDecodeError):
-            continue
-        fm = read_frontmatter(content)
-        if frontmatter_has_key(fm, "source", source):
-            return path
-    return None
-
-
-def find_summary_for_raw(summary_dir: str, raw_filename: str) -> str | None:
-    """在 summary_dir 下查找 `> 来源原文: [[raw/{raw_filename}]]` 引用的 summary 路径。"""
-    pattern = re.compile(rf">\s*来源原文\s*:\s*\[\[raw/{re.escape(raw_filename)}\]\]")
-    for root, _dirs, files in os.walk(summary_dir):
-        for filename in files:
-            if not filename.endswith(".md"):
-                continue
-            path = os.path.join(root, filename)
+        for path in sorted(drug.raw.glob("*.md")):
             try:
-                with open(path, "r", encoding="utf-8-sig") as f:
-                    content = f.read()
-            except (OSError, UnicodeDecodeError):
+                if frontmatter_value(read_frontmatter(path.read_text(encoding="utf-8-sig")), "source") == source:
+                    matches.append(path)
+            except (OSError, UnicodeError):
                 continue
-            if pattern.search(content):
-                return path
-    return None
+    return matches
 
 
-def check_url(raw_dir: str, summary_dir: str, url: str) -> str:
+def find_summaries_for_raw(raw_path: str | Path) -> list[Path]:
+    """Find summaries canonically linked to one raw in the same drug tree."""
+    raw = Path(raw_path).resolve()
+    summary_dir = raw.parent.parent / "summary"
+    if not summary_dir.is_dir():
+        return []
+    matches = []
+    for path in sorted(summary_dir.glob("*.md")):
+        try:
+            if source_path(path) == raw:
+                matches.append(path)
+        except (OSError, UnicodeError, ValueError):
+            continue
+    return matches
+
+
+def check_url(research_dir: str | Path, url: str) -> str:
     """对单个 URL 执行三级判断，返回状态。"""
-    raw_path = find_raw_for_source(raw_dir, url)
-    if raw_path is None:
+    raw_paths = find_raws_for_source(research_dir, url)
+    if not raw_paths:
         return "未提取"
+    if len(raw_paths) != 1:
+        return "来源对应多个raw"
 
-    raw_filename = os.path.basename(raw_path)
-    summary_path = find_summary_for_raw(summary_dir, raw_filename)
-    if summary_path is None:
+    summaries = find_summaries_for_raw(raw_paths[0])
+    if not summaries:
         return "已提取未生成summary"
+    if len(summaries) != 1:
+        return "一个raw对应多个summary"
 
     try:
-        with open(summary_path, "r", encoding="utf-8-sig") as f:
-            summary_content = f.read()
-    except (OSError, UnicodeDecodeError):
+        summary_content = summaries[0].read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
         return "已提取未生成summary"
 
-    fm = read_frontmatter(summary_content)
-    if frontmatter_has_key(fm, "verification", "passed"):
+    if summary_audit_passed(summary_content):
         return "已完成"
     return "未审核"
 
@@ -155,13 +123,13 @@ def main() -> int:
     parser.add_argument("--plan", required=True, help="plan 表 markdown 路径")
     args = parser.parse_args()
 
-    raw_dir, summary_dir = parse_config(args.config)
+    research_dir = load_config(args.config).research_dir
     urls = extract_urls_from_plan(args.plan)
     if not urls:
         print("plan 表没有可检查的 URL")
         return 0
 
-    results = [(url, check_url(raw_dir, summary_dir, url)) for url in urls]
+    results = [(url, check_url(research_dir, url)) for url in urls]
 
     print("plan 表进度：")
     for url, status in results:

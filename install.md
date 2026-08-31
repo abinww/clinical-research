@@ -16,6 +16,8 @@
 - 如果当前 agent 没有原生安装命令，再安装到当前 agent 的本地 skill 目录。
 - 不要只复制 `SKILL.md`，必须安装完整仓库目录。
 - 如果无法确认当前 agent 的 skill 目录，再询问用户该 agent 的 skill 目录位置。
+- 所有本地文件操作必须兼容 Windows。需要自动化时使用 Python 3.10+ 标准库和 `pathlib`，不得依赖 Unix 文件或文本工具。
+- 2.0 使用全新研究目录，不执行 v1 配置或数据迁移。
 
 ## 安装目标
 
@@ -77,7 +79,7 @@ extensions/
 {skill_root}/clinical-research/
 ```
 
-如果 `{skill_root}/clinical-research/` 不存在，执行：
+如果 `{skill_root}/clinical-research/` 不存在，优先使用当前 agent 的 Git 能力克隆：
 
 ```bash
 git clone https://github.com/abinww/clinical-research.git {skill_root}/clinical-research
@@ -97,7 +99,7 @@ git -C {skill_root}/clinical-research pull
 
 如果目标目录存在但不是本仓库，不要覆盖、删除或合并用户文件，应停止并询问用户如何处理。
 
-如果当前环境没有 Git，可下载 GitHub 仓库压缩包并解压到：
+如果当前环境没有 Git，可使用当前 agent 的下载与归档能力下载 GitHub 仓库压缩包并解压到：
 
 ```text
 {skill_root}/clinical-research/
@@ -105,13 +107,13 @@ git -C {skill_root}/clinical-research pull
 
 ### 3.1 检查 Python
 
-`drug-trials-search` 和共享扫描脚本只使用 Python 标准库。确认当前环境可执行 Python 3.10+：
+`drug-trials-search`、共享扫描脚本和初始化操作只使用 Python 标准库与 `pathlib`。确认当前环境可执行 Python 3.10+：
 
 ```text
 python --version
 ```
 
-Windows 10/11 和 Debian/Ubuntu 均可使用 `python` 命令；如果当前系统仅提供 `python3`，由 harness 将 Python 命令映射为 `python3`。
+由当前 agent/harness 使用本机可用的 Python 启动方式。Windows 常见命令为 `python` 或 `py -3`，其他系统可能为 `python3`；不得假设 Bash 或 Unix 工具存在。
 
 ### 4. 检查安装完整性
 
@@ -162,9 +164,20 @@ Windows 10/11 和 Debian/Ubuntu 均可使用 `python` 命令；如果当前系�
 {skill_root}/clinical-research/initial.md
 ```
 
-`initial.md` 会询问用户数据目录，默认使用 `~/clinical`，然后生成 `config.yaml` 并创建数据目录。
+`initial.md` 会询问用户研究目录，默认使用 `~/research`。它把该路径展开为当前系统的绝对路径，生成只含 `research_dir` 的 `config.yaml`，并创建：
 
-如果 `config.yaml` 已经存在，不要重复初始化，直接保留现有配置。
+```text
+{research_dir}/index.md
+{research_dir}/indication/
+{research_dir}/attachments/
+{research_dir}/.temp/plans/
+```
+
+根 `index.md` 是公司/药品别名和路径的第一查询入口，由 agent 生成且允许用户编辑。初始化不创建公司目录；创建首个药品时，才在 vault 根目录直接创建 `{company_id}/{drug_id}/`。2.0 不创建 `company/` 根容器或 `company.md`，也不创建全局 `raw/`、`summary/`、`drug/`、`trials/` 或其他内容根目录。
+
+如果发现旧版多字段配置或 v1 数据目录，不要转换、移动或合并。说明 2.0 不提供 v1 迁移，并请用户确认一个新的 2.0 研究目录。
+
+如果 `config.yaml` 已经存在且只包含绝对路径字段 `research_dir`，不要重复初始化，直接保留。其他配置均视为无效，按 `initial.md` 先征得用户确认再重新初始化，且不得迁移旧数据。
 
 ## 安装完成后的验证
 
@@ -198,3 +211,4 @@ clinical-research/SKILL.md
 - 不要执行来源不明的安装脚本。
 - 不要覆盖同名但来源不同的本地目录。
 - 不要把患者隐私数据、API key、账号凭证或商业敏感资料写入仓库目录。
+- 不要覆盖已有 `index.md` 或删除用户维护的别名和备注。

@@ -1,135 +1,107 @@
-# clinical-research
+# clinical-research 2.0
 
-一个面向临床研究资料整理、结构化提取、索引更新和临床数据评价的通用 Skill。它根据用户请求自动路由到对应的子 Skill，帮助把 URL、PDF、公告、会议资料等来源整理为可追溯的临床数据知识库。
+面向创新药临床研究的可追溯知识库 Skill。它根据用户请求路由到对应子 Skill，把 URL、PDF、公告和会议资料按公司/药品整理，并支持提取、验证、索引、检索、专利研究和临床数据评价。
 
-适用于任何支持 SKILL.md 路由机制的 AI Coding Agent（如 Codex、OpenCode、OpenClaw 等）。
+适用于支持 `SKILL.md` 路由机制的 AI Coding Agent，例如 Codex、OpenCode 和 OpenClaw。
 
 ## 主要功能
 
-- 从 URL 或 PDF 提取临床研究资料，保存为原始资料。
-- 将原始资料整理成结构化临床摘要。
-- 按药品和适应症生成或更新索引。
-- 批量扫描未处理资料，增量生成摘要。
-- 查询药品相关临床试验注册信息。
-- 按统一框架评价临床试验设计、疗效、安全性和竞争格局。
+- 从 URL 或 PDF 保存来源原文并生成结构化摘要。
+- 一个来源对应一份 raw 和一份 summary；单份 summary 可覆盖多个适应症。
+- 通过根 `index.md` 解析公司/药品规范 ID 和别名。
+- 按药品维护 `{drug_id}.md`，按适应症维护根索引。
+- 查询临床试验、搜索公开数据和专利，并评价试验设计、疗效与安全性。
 
-## 子 Skill 说明
+## 子 Skill
 
 | 目录 | 用途 |
 | --- | --- |
-| `multi-extractor/` | 提取唯一入口：单/多链接并行提取、验证与索引编排。 |
-| `clinical-extractor/` | 单来源提取单元：URL/PDF → raw/ → summary/。 |
-| `batch-extractor/` | 批量处理 raw 目录下尚未整理的临床资料。 |
-| `clinical-indexer/` | 定时或手动扫描全部 summary，分别查漏补缺 drug/ 和 indication/ 索引。 |
-| `drug-trials-search/` | 查询临床试验注册信息，并写入药品管线表。 |
-| `drug-patent-search/` | 药品/公司专利检索：原研专利写入 drug 页面，公司专利方向输出报告。 |
-| `data-search/` | 搜索已公布的临床数据来源，输出 plan 表供提取。 |
-| `drug-identity/` | 解析药品标准身份（drug_id、别名、靶点等），维护 drug/ 骨架。 |
-| `data-verify/` | 验证 summary 数据来源，把审核章节写入 summary。 |
-| `drug-build/` | 编排建库：管线查询、数据搜索、批量提取、验证与索引。 |
-| `clinical-trial-evaluator/` | 按结构化框架评价临床试验数据。 |
-| `schema/` | 临床摘要、药品索引、适应症索引的 Markdown 格式规范。 |
+| `multi-extractor/` | 单/多链接提取、验证与索引的唯一入口。 |
+| `clinical-extractor/` | 单来源提取单元：来源 → raw → summary。 |
+| `batch-extractor/` | 批量处理药品目录中未整理的 raw。 |
+| `clinical-indexer/` | 扫描 summary 并更新 `{drug_id}.md`、根 `index.md` 和 `indication/`。 |
+| `drug-trials-search/` | 查询临床试验注册信息并更新 `{drug_id}.md`。 |
+| `drug-patent-search/` | 检索药品或公司专利。 |
+| `data-search/` | 搜索已公布数据来源并返回计划，不写入文件。 |
+| `drug-identity/` | 解析规范药品身份、别名、靶点与公司归属。 |
+| `data-verify/` | 对照 raw/来源验证 summary。 |
+| `drug-build/` | 编排查询、搜索、提取、验证和索引。 |
+| `clinical-trial-evaluator/` | 结构化评价临床试验数据。 |
+| `schema/` | Markdown 数据规范。 |
 
-## 安装方式
+## 安装
 
-### 方式一：让 Agent 自动安装
-
-直接对当前 agent 发送：
+让当前 Agent 按安装文档执行：
 
 ```text
 请按照 https://github.com/abinww/clinical-research/blob/main/install.md 安装 clinical-research skill。
 ```
 
-Agent 会读取 `install.md` 并自动识别自身所属环境的 skill 目录，完成下载与初始化。
+也可克隆完整仓库，并将 `clinical-research/` 放入当前 Agent 文档指定的 skill 根目录：
 
-### 方式二：手动 Git 克隆
-
-```bash
+```text
 git clone https://github.com/abinww/clinical-research.git
 ```
 
-将 `clinical-research` 目录放入当前 agent 的 skill 根目录（常见名称：`skills/`、`tools/`、`plugins/` 等，以当前 agent 的文档为准）：
+安装后若没有 `config.yaml`，Agent 会执行 `initial.md`。默认研究目录是 `~/research`；配置中会保存展开后的绝对路径。
+
+## 2.0 数据模型
 
 ```text
-{skill_root}/clinical-research/
+~/research/
+├── index.md                         # 第一查询入口：公司/药品 ID、别名与路径
+├── {company_id}/
+│   └── {drug_id}/
+│       ├── {drug_id}.md
+│       ├── raw/{drug_id}@{source_label}.md
+│       └── summary/{drug_id}@{source_label}.md
+├── indication/{indication_id}.md
+├── attachments/
+└── .temp/plans/
 ```
 
+核心规则：
 
-### 首次初始化
+- `index.md` 是任何实体定位的第一查询入口，由 Agent 生成和维护，也允许用户编辑。Agent 更新时必须保留用户内容。
+- 根索引包含公司和药品别名。歧义别名必须明确区分，例如 MSD 指向 Merck & Co./默沙东，Merck KGaA/德国默克在美国和加拿大使用 EMD 品牌，不得合并两者。
+- `research_dir` 本身是 Obsidian vault 根目录，不存在中间 `company/` 容器。
+- 初始化只创建 `indication/`、`attachments/`、`.temp/plans/` 和 `index.md`。创建首个药品时才在 vault 根目录直接创建对应公司和药品目录。
+- `company_id` 和公司目录使用常见短名，可以包含中文；中日公司通常用常见中文短名，西方公司通常用常见英文短名。名称必须 Windows-safe，但不要求仅含 ASCII。
+- 每个药品一个 `{drug_id}.md`，不创建 `company.md`。
+- 每个来源使用稳定 `source_label`，并恰好对应同一药品下同名的 `raw/{drug_id}@{source_label}.md` 与 `summary/{drug_id}@{source_label}.md`。
+- summary 可以列出多个适应症；不得为了不同适应症复制同一来源。
+- `indication/` 是根级适应症索引；`attachments/` 保存附件；`.temp/plans/` 只保存 `drug-build` 持久化的临时计划。独立 `data-search` 只返回 plan。
+- 根目录扫描必须排除 `indication/`、`attachments/`、`.temp/`、隐藏目录和其他已知基础设施目录，不能将它们误判为公司。
+- 不存在全局 `raw/`、`summary/`、`drug/`、`trials/` 或其他全局内容根目录。试验注册结果进入对应 `{drug_id}.md`；公司专利 Mode C 只返回报告，不写临时文件。
 
-安装完成后，如果目录下不存在 `config.yaml`，agent 会自动读取 `initial.md` 询问数据目录并生成配置。默认数据目录是 `~/clinical`。
+共享配置位于 `clinical-research/config.yaml`，且只包含：
+
+```yaml
+research_dir: C:/Users/example/research
+```
+
+路径必须为当前系统的绝对路径。所有自动化应使用 Python 3.10+ 标准库和 `pathlib`，兼容 Windows，不依赖 Unix 文本或文件工具。
+
+2.0 初始化不提供 v1 数据迁移，也不会从旧配置推导目录。
 
 ## 使用示例
 
-可用类似下面的中文请求触发：
-
 ```text
 提取临床数据: <URL>
-```
-
-```text
+对某个药品建库
 查询某个药品的临床试验
-```
-
-```text
 更新药品索引
-```
-
-```text
-整理某个药品的所有临床数据
-```
-
-```text
 评价这项临床试验数据
 ```
 
-顶层 `SKILL.md` 会根据请求内容路由到对应子 skill。每个子 skill 都有自己的 workflow，执行时会先读取对应目录下的 `SKILL.md`。
+顶层 `SKILL.md` 先进行配置和索引预检，再按请求读取对应子 skill 的完整 workflow。
 
-## 数据目录
-
-默认临床数据目录为：
-
-```text
-~/clinical
-```
-
-目录结构通常为：
-
-```text
-~/clinical/
-├── raw/          # 原始资料（带 YAML frontmatter）
-├── summary/      # 结构化摘要快照（summary/{drug_id}/{drug_id}@{indication_id}@{source_label}.md）
-├── drug/         # 药品索引（平铺：{drug_id}.md）
-├── indication/   # 适应症索引（平铺：{indication_id}.md）
-├── trials/       # 临床试验查询结果
-└── attachments/  # 图片附件
-```
-
-各子目录的职责：
-
-| 目录 | 职责 | 写入方 |
-| --- | --- | --- |
-| `raw/` | 工具（tavily_extract / pdftotext 等）的原始输出，禁止大模型改写 | multi-extractor（clinical-extractor 执行）、batch-extractor |
-| `summary/` | 结构化临床摘要，按药品分子目录组织，必须通过数据一致性审核 | multi-extractor（clinical-extractor 执行）、batch-extractor |
-| `drug/` | 药品索引，按药品平铺，一药一文件；创建时可由任一 writer 建立基本信息，clinical-indexer 维护临床数据汇总和关键里程碑，drug-trials-search 仅维护当前临床管线，drug-patent-search 仅维护药品专利 | drug-identity（骨架）、clinical-indexer、drug-trials-search、drug-patent-search |
-| `indication/` | 适应症索引，按适应症平铺 | clinical-indexer |
-| `trials/` | 临床试验注册查询的原始结果 | drug-trials-search |
-| `attachments/` | 图片附件 | multi-extractor（clinical-extractor 执行） |
-
-共享配置位于：
-
-```text
-clinical-research/config.yaml
-```
-
-`config.yaml` 是本地配置，不应提交；可从 `config.template.yaml` 创建，并填入实际的绝对数据目录路径。
-
-## 注意事项
+## 安全
 
 - 不要提交患者隐私数据、API key、账号凭证、未公开资料或商业敏感文件。
-- 生成数据的 `.gitignore` 已默认排除 `raw/`、`summary/`、`drug/`、`indication/`、`trials/`、`attachments/`，避免把生产数据写入仓库。
-- 生成的摘要和索引应保留来源链接，重要数据建议人工复核。
-- 本 skill 用于研究资料整理和分析辅助，不构成医学建议、投资建议或监管判断。
+- `config.yaml` 和误放在 skill 仓库内的研究数据均被 `.gitignore` 排除；研究数据应存放在配置的外部目录。
+- raw 保留来源原文，summary 和索引保留来源链接；重要结论应人工复核。
+- 本 Skill 用于研究整理和分析辅助，不构成医学、投资或监管建议。
 
 ## 许可证
 

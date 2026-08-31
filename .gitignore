@@ -32,10 +32,8 @@ config.yaml
 *.p12
 *.pfx
 
-# Generated clinical data should stay outside the shared skill repository.
-raw/
-summary/
-drug/
+# Research data belongs in the configured external research_dir.
+index.md
 indication/
-trials/
 attachments/
+.temp/

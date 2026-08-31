@@ -11,7 +11,7 @@ description: |
 
 > 本文件由 clinical-research/SKILL.md 路由后读取执行。
 > 职责：检索指定药品的原研专利（Mode A）或指定公司近年专利方向（Mode C），供赛道/护城河分析。
-> 本 skill 不提取临床数据、不写入 raw/ 或 summary/；Mode A 写入 drug/{drug_id}.md 的 `## 药品专利` 章节，Mode C 只返回报告。
+> 本 skill 不提取临床数据、不写入 raw/ 或 summary/；Mode A 写入 drug-identity 返回的 `drug_page` 的 `## 药品专利` 章节，Mode C 只返回报告。
 
 ## 执行约束
 
@@ -48,11 +48,21 @@ description: |
 - **药品名称 / 公司名**
 - **时间窗**（Mode C 常用，默认最近 5 年；也可用于 Mode A 限定）
 
-## Step 2: 身份锚定（仅 Mode A）
+## Step 2: 身份锚定
 
-读取 `../drug-identity/SKILL.md`，按 workflow 获取标准身份对象（drug_id、drug_aliases、target、companies、molecule_type；展示名从 drug_aliases 选取）。
+### Mode A
+
+读取 `../drug-identity/SKILL.md`，按 workflow 获取标准身份与位置对象（包括 drug_id、drug_aliases、target、companies、molecule_type、drug_page；展示名从 drug_aliases 选取）。
 
 无法确认身份时停下返回用户确认，不进入后续步骤。
+
+### Mode C
+
+1. 先读取 `{clinical_research_dir}/config.yaml`，只从配置取得绝对 `research_dir`；配置缺失、无效或路径不可读时停止，不得猜测目录。
+2. 随后首先读取 `{research_dir}/index.md` 的集中公司表。公司身份只以该表为准；不得查找、读取或创建 `company.md`，也不得先扫描公司目录或开始专利查询。
+3. 用用户输入依次匹配公司表中的 `company_id`、中文名、英文名和 aliases，得到唯一 canonical `company_id`、canonical company name 及完整 aliases。
+4. 若输入可对应多个实体或品牌，例如 `Merck` 可能指 Merck & Co./MSD 或 Merck KGaA，必须列出根索引中的候选并询问用户选择，不得自行按地区、知名度或搜索结果猜测。
+5. 未命中或不能唯一解析时停止并询问用户；不得临时创建公司身份。解析成功后，Mode C 的查询必须覆盖 canonical company name 和全部 aliases。
 
 ## Step 3: 构造查询计划
 
@@ -76,10 +86,16 @@ python {skill_dir}/scripts/search_patents.py --mode drug \
 
 ```text
 python {skill_dir}/scripts/search_patents.py --mode company \
-  --assignee "Kymera Therapeutics" --after 2021-01-01 \
+  --assignee "{canonical company name}" \
+  --after 2021-01-01 \
+  [--country CN] --format markdown
+
+python {skill_dir}/scripts/search_patents.py --mode company \
+  --assignee "{alias 1}" --after 2021-01-01 \
   [--country CN] --format markdown
 ```
 
+- `--assignee` 每次接收一个公司名。查询词来自根索引公司表，包含 canonical company name 和全部中文名、英文名及 aliases；先去除完全重复值，再逐个运行脚本，最后按公开号合并去重并汇总，不得只查询用户输入的一个名称
 - `--after/--before` 限定申请日时间窗；脚本同时传给 GP 并在本地按申请日二次过滤
 - 时间窗默认最近 5 年（agent 可调整）
 
@@ -91,16 +107,16 @@ python {skill_dir}/scripts/search_patents.py --mode company \
    - 剔除明显噪声（如仅"提及"该药名、实为其他分子的平台专利，可在 备注 标注"平台延伸，提及XX，非直接保护"）
    - 备注列补充人工判断（如"核心物质族（2014 优先权）"）
 
-## Step 5: 写入 drug/{drug_id}.md（仅 Mode A）
+## Step 5: 写入 drug_page（仅 Mode A）
 
-> ⚠️ 强制步骤（Mode A）。本 skill **不新建** drug 文件，只写入 `## 药品专利` 章节；文件不存在则停止并报告。
+> ⚠️ 强制步骤（Mode A）。本 skill **不新建** drug 文件，只写入已解析 `drug_page` 的 `## 药品专利` 章节；未返回路径或文件不存在则停止并报告，不猜测路径。
 
 ```
 文件存在？
 ├── 是 → 读取内容，定位或新增 ## 药品专利 章节（位置在 ## 当前临床管线 之后，由 drug-spec.md 定义）
 │         章节内整表替换为本次脚本输出（含更新时间/来源/类型/申请人分布行）
 │         不触碰其他章节
-└── 否 → 停止并报告："drug/{drug_id}.md 不存在，无法写入专利章节"；不自行新建
+└── 否 → 停止并报告："{drug_page} 不存在，无法写入专利章节"；不自行新建
 ```
 
 写入边界：只写 `## 药品专利`；**不得**创建或填充 `## 临床数据汇总`、`## 关键里程碑`、`## 当前临床管线`。
@@ -111,11 +127,12 @@ python {skill_dir}/scripts/search_patents.py --mode company \
 drug-patent-search 完成：
 - 模式: Mode A（药品） / Mode C（公司）
 - 药品/公司: {drug_id} / {company}
+- Mode C 公司解析: {company_id} | canonical name: {name} | queried aliases: {列表}
 - 数据源: GP / FPO（降级时说明原因）
 - 各轴审计: 名称轴 N 条 · 公司轴 N 条 · 组件轴 N 条（Mode A）
 - 命中: 去重后 N 件
 - 类型分布: compound N · combo N · use N · other N
-- 写入: drug/{drug_id}.md ## 药品专利（Mode A）/ 报告返回（Mode C）
+- 写入: {drug_page} ## 药品专利（Mode A）/ 报告返回（Mode C）
 - 人工复核项: （明显噪声/平台延伸列表；如有）
 - 盲区声明:
   - 数据源为 FPO 时 CN/WO/EP 未覆盖（GP 不可用）
