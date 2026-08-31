@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.config import load_config, read_config
+from scripts.config import load_config, read_config, restricted_scalar
 
 
 class ConfigTests(unittest.TestCase):
@@ -59,6 +59,15 @@ class ConfigTests(unittest.TestCase):
             )
 
             self.assertEqual(load_config(config).research_dir, research_dir.resolve())
+
+    def test_restricted_scalar_preserves_url_fragments_and_apostrophes(self):
+        self.assertEqual(restricted_scalar("https://example.test/a#fragment"), "https://example.test/a#fragment")
+        self.assertEqual(restricted_scalar("O'Brien # comment"), "O'Brien")
+        self.assertEqual(restricted_scalar("# comment only"), "")
+        self.assertEqual(restricted_scalar("'O''Brien # literal' # comment"), "O'Brien # literal")
+        self.assertEqual(restricted_scalar(r'"a\tb" # comment'), "a\tb")
+        with self.assertRaises(ValueError):
+            restricted_scalar("'unterminated")
 
 
 if __name__ == "__main__":

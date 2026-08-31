@@ -7,7 +7,7 @@
 ## 主要功能
 
 - 从 URL 或 PDF 保存来源原文并生成结构化摘要。
-- 一个来源对应一份 raw 和一份 summary；单份 summary 可覆盖多个适应症。
+- 每个药品内，一个 canonical source 对应一份 raw 和一份 summary；单份 summary 可覆盖多个适应症。同一来源可被不同药品分别复用。
 - 通过根 `index.md` 解析公司/药品规范 ID 和别名。
 - 按药品维护 `{drug_id}.md`，按适应症维护根索引。
 - 查询临床试验、搜索公开数据和专利，并评价试验设计、疗效与安全性。
@@ -62,14 +62,15 @@ git clone https://github.com/abinww/clinical-research.git
 
 核心规则：
 
-- `index.md` 是任何实体定位的第一查询入口，由 Agent 生成和维护，也允许用户编辑。Agent 更新时必须保留用户内容。
+- `index.md` 是任何实体定位的第一查询入口，由 Agent 生成和维护，也允许用户编辑。Agent 会写入明确的 managed index markers 所界定的数据块；这些块不是只读内容，更新时增量维护，markers 外的用户内容必须保留。
 - 根索引包含公司和药品别名。歧义别名必须明确区分，例如 MSD 指向 Merck & Co./默沙东，Merck KGaA/德国默克在美国和加拿大使用 EMD 品牌，不得合并两者。
 - `research_dir` 本身是 Obsidian vault 根目录，不存在中间 `company/` 容器。
 - 初始化只创建 `indication/`、`attachments/`、`.temp/plans/` 和 `index.md`。创建首个药品时才在 vault 根目录直接创建对应公司和药品目录。
 - `company_id` 和公司目录使用常见短名，可以包含中文；中日公司通常用常见中文短名，西方公司通常用常见英文短名。名称必须 Windows-safe，但不要求仅含 ASCII。
 - 每个药品一个 `{drug_id}.md`，不创建 `company.md`。
-- 每个来源使用稳定 `source_label`，并恰好对应同一药品下同名的 `raw/{drug_id}@{source_label}.md` 与 `summary/{drug_id}@{source_label}.md`。
+- 重复范围限定在单个药品：每个 canonical source 在同一 `drug_id` 下使用稳定 `source_label`，并恰好对应同名的 `raw/{drug_id}@{source_label}.md` 与 `summary/{drug_id}@{source_label}.md`。同一 canonical source 可在不同药品下各自归档，不做跨药品排除。
 - summary 可以列出多个适应症；不得为了不同适应症复制同一来源。
+- 药品页、适应症页和根 `index.md` 中由 indexer 管理的来源数据块使用 managed index markers 标识。索引流程可增量写入和更新这些 managed blocks，同时保留 markers 外的人工段落、注释和排序；不得将索引行为描述为只读扫描。
 - `indication/` 是根级适应症索引；`attachments/` 保存附件；`.temp/plans/` 只保存 `drug-build` 持久化的临时计划。独立 `data-search` 只返回 plan。
 - 根目录扫描必须排除 `indication/`、`attachments/`、`.temp/`、隐藏目录和其他已知基础设施目录，不能将它们误判为公司。
 - 不存在全局 `raw/`、`summary/`、`drug/`、`trials/` 或其他全局内容根目录。试验注册结果进入对应 `{drug_id}.md`；公司专利 Mode C 只返回报告，不写临时文件。

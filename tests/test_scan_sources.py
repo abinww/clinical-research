@@ -3,12 +3,16 @@ import tempfile
 import unittest
 
 from scripts.scan_sources import (
+    ScanAnomaly,
+    frontmatter_value,
     processed_sources,
     raw_sources,
     research_sources,
     semantic_markdown_files,
     _source_urls,
     source_raw_name,
+    source_link,
+    summary_audit_passed,
 )
 
 
@@ -30,6 +34,9 @@ class ScanSourcesTests(unittest.TestCase):
         self.assertIsNone(source_raw_name("> 来源原文: [encoded](../raw/nested%2Ffile.md)"))
         self.assertIsNone(source_raw_name(text + text))
         self.assertIsNone(source_raw_name(text + "> 来源原文: [[raw/legacy.md]]\n"))
+        generated = source_link("试验 #1 (final).md", "source")
+        self.assertEqual(generated, "> 来源原文: [source](../raw/%E8%AF%95%E9%AA%8C%20%231%20%28final%29.md)")
+        self.assertEqual(source_raw_name(generated), "raw/试验 #1 (final).md")
 
     def test_processed_and_pending_use_distinct_root_relative_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -73,6 +80,22 @@ class ScanSourcesTests(unittest.TestCase):
             self.assertEqual([identity for _, identity in raw], ["company/drug/raw/source.md"])
             self.assertEqual(processed, {})
 
+    def test_reports_mismatch_and_duplicate_separately(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            drug = make_drug(root, "company", "drug")
+            (drug / "raw" / "source.md").write_text("raw", encoding="utf-8")
+            for name in ("different.md", "other.md"):
+                (drug / "summary" / name).write_text(
+                    "> 来源原文: [source](../raw/source.md)\n", encoding="utf-8"
+                )
+            anomalies: list[ScanAnomaly] = []
+
+            research_sources(root, anomalies)
+
+            self.assertEqual(sum(item.kind == "mismatched_summary" for item in anomalies), 2)
+            self.assertEqual(sum(item.kind == "duplicate_summary" for item in anomalies), 1)
+
     def test_urls_read_source_only_from_opening_frontmatter(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -82,6 +105,29 @@ class ScanSourcesTests(unittest.TestCase):
             body.write_text("# Raw\nsource: https://example.test/body\n", encoding="utf-8")
 
             self.assertEqual(_source_urls([frontmatter, body]), ["https://example.test/front"])
+
+    def test_frontmatter_scalar_rejects_duplicate_and_preserves_hash(self):
+        self.assertEqual(frontmatter_value("source: https://example.test/a#b", "source"), "https://example.test/a#b")
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            frontmatter_value("source: one\nsource: two", "source")
+
+    def test_audit_requires_real_final_heading_and_nonempty_canonical_table(self):
+        prefix = (
+            "---\nverification: passed\nverification_fail_count: '0'\nverification_coverage: complete\n"
+            "indications:\n  - indication_id: NSCLC_1L\n    indication: NSCLC 一线\n---\n"
+        )
+        valid = (
+            prefix
+            + "## [NSCLC_1L] NSCLC 一线\n\n### 核心数据\n\n"
+            "## 数据一致性审核\n| indication_id | 数据项 | 状态 |\n|---|---|---|\n"
+            "| NSCLC_1L | ORR | WARN |\n"
+        )
+        self.assertTrue(summary_audit_passed(valid))
+        self.assertFalse(summary_audit_passed(prefix + "```\n" + valid.split("---\n", 2)[-1] + "```\n"))
+        self.assertFalse(summary_audit_passed(valid.replace("NSCLC_1L | ORR", " | ORR")))
+        self.assertFalse(summary_audit_passed(valid.replace("WARN", "UNKNOWN")))
+        self.assertFalse(summary_audit_passed(valid + "### 后续\n"))
+        self.assertFalse(summary_audit_passed(valid.replace("verification_coverage: complete\n", "")))
 
     def test_semantic_scan_excludes_infrastructure_and_index(self):
         with tempfile.TemporaryDirectory() as temporary:

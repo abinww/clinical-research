@@ -48,7 +48,9 @@ raw_file = raw_dir/{drug_id}@{source_label}.md
 summary_file = summary_dir/{drug_id}@{source_label}.md
 ```
 
-读取 `drug_page` 获得 aliases、target、companies、molecule_type 等身份字段；必要时调用 drug-identity 校验，但不得从 raw 猜测或另行决定 `company_id`/`drug_id`。路径不符合布局、drug page 缺失、raw 文件名不符合 `{drug_id}@{source_label}.md` 或同名 summary 已存在时，记录失败/跳过并继续。
+写入前必须读取根 `{research_dir}/index.md`，以 `drug_id`、别名和完整 vault 路径联合查找，确认恰好一个条目映射到 `{company_id}/{drug_id}/{drug_id}.md`。零个、多个、同一 `drug_id` 映射多路径或该路径映射另一药物时，该项失败且不得写 summary。
+
+读取 `drug_page` 获得 `drug_aliases`、`target`、`archive_company`、`company_ids`、`molecule_type`；兼容字段 `companies` 如存在必须与 `company_ids` 相同。必要时以 drug-identity 的 `resolve_only` 模式校验。上下文必须含 `research_dir`、`drug_dir`、`drug_page`、`raw_dir`、`summary_dir`、`attachments_dir`。不得从 raw 猜测身份。路径、文件名、标识符/标签不合规，drug page 缺失或同名 summary 已存在时，记录失败/跳过并继续。
 
 ## Step 3: 每个 raw 生成一个 summary
 
@@ -56,12 +58,12 @@ summary_file = summary_dir/{drug_id}@{source_label}.md
 
 - 一个 raw 只生成一个 summary，不因多个适应症拆分文件。
 - frontmatter 包含身份字段和 `indications` 数组。
-- 正文按数组中的适应症分别建立有效性、安全性和试验设计分节，数据组别不得串列。
+- 正文按数组使用 `## [{indication_id}] {indication}` 标题分别建立分节；对象可携带 trial 级 phase/regimen/cutoff 并按 summary-spec 继承，数据组别不得串列。
 - H1 后必须写精确 canonical link：`> 来源原文: [{source_label}](../raw/{drug_id}@{source_label}.md)`。
 - URL 图保持远程链接。已有 raw 若对应 PDF 且缺少关键图，可使用可用 harness/PDF 工具将裁剪图（优先）或完整页面保存到 `{research_dir}/attachments/`，并从 summary 以 `../../../attachments/{file}` 引用。
 - PDF 渲染/截图不可用时继续生成文本 summary，在结果中明确报告图片缺失原因；不得伪造附件。
 - 不覆盖文件、不追加序号、不写旧式 wikilink。生成失败时不得保存空或半成品 summary。
-- 提取阶段固定写 `verification: pending`、`verification_fail_count: null`，不得预先写 `passed` 或自行审核。
+- 提取阶段固定写 `verification: pending`、`verification_fail_count: null`、`verification_coverage: null`，不得预先写 `passed` 或自行审核。
 
 可按来源并行，但每个 worker 必须收到该 raw 的完整 identity/path context，且写入目标互不重叠。
 

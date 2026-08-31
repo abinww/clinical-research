@@ -40,6 +40,7 @@ class TrialResult:
         self.secondary_outcome: str = "—"
         self.url: str = "—"
         self.source: str = "—"
+        self.query_aliases: list[str] = []
     
     def to_dict(self) -> dict:
         return {
@@ -87,6 +88,10 @@ EUROPEAN_COUNTRIES = {
 }
 
 CORE_COUNTRY_ORDER = ("US", "CN", "JP", "UK", "AU")
+
+
+class ClinicalTrialsGovError(RuntimeError):
+    """Raised when ClinicalTrials.gov cannot provide a valid response."""
 
 
 def extract_countries(locations: list[dict]) -> str:
@@ -207,9 +212,11 @@ class ClinicalTrialsGov:
                 params["pageToken"] = next_token
 
             return results
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-            print(f"[ERROR] clinicaltrials.gov API 请求失败: {e}", file=sys.stderr)
-            return []
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
+                json.JSONDecodeError) as e:
+            raise ClinicalTrialsGovError(
+                f"clinicaltrials.gov API 请求失败: {e}"
+            ) from e
     
     def _parse_results(self, data: dict) -> list[TrialResult]:
         """解析 API 返回结果"""
@@ -298,7 +305,7 @@ class ClinicalTrialsGov:
         """从 armGroups 中提取试验药物（EXPERIMENTAL arm）。
 
         规则：
-        - 只取 type == EXPERIMENTAL 的 arm
+        - 取所有不同的 type == EXPERIMENTAL 的 arm，并用 "; " 保留 arm 边界
         - 优先使用 arm label（保留完整联用信息，如 "HS-20093 and adebrelimab"），
           把 " and " 清洗为 " + "
         - label 不可用时用 interventionNames（剥 "Drug: "/"Biological: " 前缀）
@@ -307,12 +314,21 @@ class ClinicalTrialsGov:
         arms = arms_mod.get("armGroups", arms_mod.get("arms", []))
         experimental_arms = [a for a in arms if str(a.get("type", "")).upper() == "EXPERIMENTAL"]
         if experimental_arms:
-            arm = experimental_arms[0]
-            label = str(arm.get("label", "")).strip()
-            if label:
-                return " + ".join(p.strip() for p in label.split(" and ") if p.strip())
-            names = self._strip_intervention_prefixes(arm.get("interventionNames", []))
-            return " + ".join(names[:3]) if names else (title[:50] if title else "—")
+            regimens = []
+            for arm in experimental_arms:
+                label = str(arm.get("label", "")).strip()
+                if label:
+                    regimen = " + ".join(
+                        p.strip() for p in label.split(" and ") if p.strip()
+                    )
+                else:
+                    names = self._strip_intervention_prefixes(arm.get("interventionNames", []))
+                    regimen = " + ".join(names)
+                if regimen and regimen not in regimens:
+                    regimens.append(regimen)
+            if regimens:
+                return "; ".join(regimens)
+            return title[:50] if title else "—"
 
         # 回退：interventions 中排除对照 arm 使用的干预
         control_names = set()
@@ -450,9 +466,34 @@ def normalize_phase(phase: str) -> str:
     return ", ".join(formatted) if formatted else "—"
 
 
+def search_aliases(client: ClinicalTrialsGov, aliases: list[str],
+                   indication: Optional[str] = None,
+                   sponsor: Optional[str] = None,
+                   max_results: Optional[int] = None) -> list[TrialResult]:
+    """Query each distinct alias and deterministically union results by NCT ID."""
+    unique_aliases = list(dict.fromkeys(alias.strip() for alias in aliases if alias.strip()))
+    by_id = {}
+    for alias in unique_aliases:
+        for trial in client.search(
+            drug=alias,
+            indication=indication,
+            sponsor=sponsor,
+            max_results=max_results,
+        ):
+            trial_id = trial.trial_id
+            if trial_id not in by_id:
+                trial.query_aliases = [alias]
+                by_id[trial_id] = trial
+            elif alias not in by_id[trial_id].query_aliases:
+                by_id[trial_id].query_aliases.append(alias)
+    merged = [by_id[trial_id] for trial_id in sorted(by_id)]
+    return merged[:max_results] if max_results is not None else merged
+
+
 def main():
     parser = argparse.ArgumentParser(description="药品临床试验查询")
-    parser.add_argument("--drug", "-d", required=True, help="药品名称")
+    parser.add_argument("--drug", "-d", required=True, action="append",
+                        help="药品名称或别名（可重复指定）")
     parser.add_argument("--indication", "-i", help="适应症")
     parser.add_argument("--sponsor", "-s", help="申办方")
     parser.add_argument("--max", "-m", type=int, help="最大结果数（默认返回全部分页结果）")
@@ -469,7 +510,10 @@ def main():
     if args.source == "cdt":
         parser.error("--source cdt 是预留接口，当前尚未实现")
 
-    print(f"查询 ClinicalTrials.gov: {args.drug}", file=sys.stderr)
+    aliases = list(dict.fromkeys(alias.strip() for alias in args.drug if alias.strip()))
+    if not aliases:
+        parser.error("--drug 不能为空")
+    print(f"查询 ClinicalTrials.gov: {', '.join(aliases)}", file=sys.stderr)
     
     all_trials = []
     
@@ -477,12 +521,17 @@ def main():
     if args.source == "ctg":
         print("查询 clinicaltrials.gov...", file=sys.stderr)
         ctg = ClinicalTrialsGov()
-        ctg_trials = ctg.search(
-            drug=args.drug,
-            indication=args.indication,
-            sponsor=args.sponsor,
-            max_results=args.max
-        )
+        try:
+            ctg_trials = search_aliases(
+                ctg,
+                aliases=aliases,
+                indication=args.indication,
+                sponsor=args.sponsor,
+                max_results=args.max,
+            )
+        except ClinicalTrialsGovError as e:
+            print(f"[ERROR] {e}", file=sys.stderr)
+            return 1
         print(f"找到 {len(ctg_trials)} 条记录", file=sys.stderr)
         all_trials.extend(ctg_trials)
     

@@ -23,6 +23,7 @@ from search_patents import (
     render_company_markdown,
     render_drug_markdown,
     sort_key,
+    validate_filter_date,
 )
 
 
@@ -140,6 +141,17 @@ class MergeTests(unittest.TestCase):
         out = merge_results([PatentResult(publication_number="")])
         self.assertEqual(out, [])
 
+    def test_merge_combines_provenance_and_richer_fields(self):
+        a = PatentResult(publication_number="US-123-A1", title="T",
+                         provenance=["alias:A"])
+        b = PatentResult(publication_number="US123A1", title="T", assignee="Owner",
+                         cpc=["C07K16/32"], provenance=["assignee:X x alias:A"])
+        out = merge_results([a, b])
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].assignee, "Owner")
+        self.assertEqual(out[0].provenance,
+                         ["alias:A", "assignee:X x alias:A"])
+
 
 class GooglePatentsParseTests(unittest.TestCase):
     def test_parse_extracts_fields_and_strips_html(self):
@@ -198,6 +210,81 @@ class GooglePatentsParseTests(unittest.TestCase):
         self.assertEqual(
             classify_patent("Methods of treating lung cancer"), "use"
         )
+
+    def test_parse_priority_publication_and_cpc_when_available(self):
+        data = {"results": {"cluster": [{"result": [{"patent": {
+            "publication_number": "US123A1", "title": "X",
+            "filing_date": "2021-02-03", "priority_date": "2020-01-02",
+            "publication_date": "2022-04-05", "cpc": ["C07K16/32"],
+        }}]}]}}
+        pr = GooglePatents._parse(data, "alias:X")[0]
+        self.assertEqual(pr.priority_date, "2020-01-02")
+        self.assertEqual(pr.publication_date, "2022-04-05")
+        self.assertEqual(pr.cpc, ["C07K16/32"])
+        self.assertEqual(pr.provenance, ["alias:X"])
+
+
+class QueryAxisTests(unittest.TestCase):
+    def test_gp_builds_each_alias_component_and_assignee_cross_product(self):
+        queries = GooglePatents()._build_queries(
+            ["drug", "code"], ["A", "B"], ["payload"])
+        self.assertEqual(len(queries), 7)
+        self.assertIn(("payload", None, "component:payload"), queries)
+        self.assertIn(("code", "B", "assignee:B x alias:code"), queries)
+
+    def test_fpo_queries_aliases_separately_not_as_and(self):
+        queries = FreePatentsOnline()._build_queries(
+            ["drug", "code"], ["A"], ["payload"])
+        expressions = [expr for expr, _ in queries]
+        self.assertIn('SPEC/"drug"', expressions)
+        self.assertIn('SPEC/"code"', expressions)
+        self.assertNotIn('SPEC/"drug" AND SPEC/"code"', expressions)
+        self.assertIn('AN/"A" AND SPEC/"code"', expressions)
+
+    def test_component_only_search_builds_a_query(self):
+        gp = GooglePatents()
+        gp._query_page = lambda **kwargs: []
+        self.assertEqual(gp.search(component_terms=["payload"]), [])
+
+
+class DateFilterTests(unittest.TestCase):
+    def test_gp_filter_compares_full_dates(self):
+        patents = [
+            PatentResult(publication_number="A", filing_date="2021-06-01"),
+            PatentResult(publication_number="B", filing_date="2021-06-15"),
+            PatentResult(publication_number="C", filing_date="2021-06-30"),
+        ]
+        out = GooglePatents._filter_by_date(
+            patents, "2021-06-10", "2021-06-20")
+        self.assertEqual([p.publication_number for p in out], ["B"])
+
+    def test_filter_dates_require_complete_valid_dates(self):
+        self.assertEqual(validate_filter_date("2021-01-31", "--after"), "2021-01-31")
+        with self.assertRaises(ValueError):
+            validate_filter_date("2021", "--after")
+        with self.assertRaises(ValueError):
+            validate_filter_date("2021-02-30", "--before")
+
+
+class SourceFailureTests(unittest.TestCase):
+    def test_explicit_gp_failure_is_raised(self):
+        runner = search_patents.PatentSearch(source="gp")
+        runner.gp.search = lambda **kwargs: (_ for _ in ()).throw(
+            search_patents.SourceUnavailable("down"))
+        with self.assertRaises(search_patents.SourceUnavailable):
+            runner.run("drug", query_terms=["x"])
+
+    def test_partial_gp_axis_failure_is_not_silent_success(self):
+        gp = GooglePatents()
+
+        def query_page(**kwargs):
+            if kwargs["q"] == "bad":
+                raise search_patents.SourceUnavailable("axis down")
+            return [PatentResult(publication_number="US1")]
+
+        gp._query_page = query_page
+        with self.assertRaises(search_patents.SourceUnavailable):
+            gp.search(query_terms=["good", "bad"])
 
 
 class FreePatentsOnlineParseTests(unittest.TestCase):
@@ -290,6 +377,13 @@ class RenderTests(unittest.TestCase):
         self.assertIn("> 类型分布: compound 1 · combo 1", out)
         self.assertIn("> 申请人分布: Daiichi Sankyo 2", out)
         self.assertIn("> 数据来源: Google Patents", out)
+        self.assertIn("> 分类依据: 标题启发式（GP XHR 未返回 CPC）", out)
+
+    def test_drug_markdown_reports_query_axis_audit(self):
+        patents = self._patents()
+        patents[0].provenance = ["alias:drug"]
+        out = render_drug_markdown(patents, "GP")
+        self.assertIn("> 查询轴命中: alias:drug 1", out)
 
     def test_drug_markdown_sorts_compound_first(self):
         out = render_drug_markdown(self._patents(), "GP")

@@ -69,13 +69,14 @@ PREFLIGHT:
     └── plans/
 ```
 
-- `index.md` 是所有任务的第一查询入口，记录公司和药品的规范 ID、别名与定位。它由 agent 生成和维护，也允许用户手工编辑；修改时保留用户已有内容。
+- `index.md` 是所有任务的第一查询入口，记录公司和药品的规范 ID、别名与定位。它由 agent 生成和维护，也允许用户手工编辑；agent 可增量写入和更新 managed index markers 内的数据块，必须保留 markers 外的用户内容，不得把索引流程误述为只读。
 - `research_dir` 本身就是 Obsidian vault 根目录；公司目录是其直接子目录，不存在中间 `company/` 容器。
 - 初始化不创建任何公司目录。首次创建药品时才创建 `{company_id}/{drug_id}/`。扫描根目录时必须排除 `indication/`、`attachments/`、`.temp/`、所有隐藏目录和其他已知基础设施目录，不能把它们识别为公司。
 - `company_id` 也是公司目录名，使用常见公司短名：中日公司通常使用常见中文短名，西方公司通常使用常见英文短名。它必须是单个 Windows-safe 路径组件，但不要求仅含 ASCII。
 - 每个药品只有一个 `{drug_id}.md`，不存在 `company.md`。
-- 一个来源严格对应同一药品目录中的一个 `raw/{drug_id}@{source_label}.md` 和一个 `summary/{drug_id}@{source_label}.md`。两者同名，不得按适应症复制来源文件。
+- 来源去重范围是单个药品。一个 canonical source 在同一药品目录中严格对应一个 `raw/{drug_id}@{source_label}.md` 和一个 `summary/{drug_id}@{source_label}.md`；两者同名，不得按适应症复制。不同药品可以各自使用同一 canonical source，不得因其他药品已归档而全局排除。
 - 一份 summary 可以覆盖多个适应症，并在内容/元数据中列出全部规范 `indication_id`；适应症聚合写入根 `indication/`。
+- 药品页、适应症页和根索引中的 indexer 管理数据块以 managed index markers 界定。索引任务可以修改这些 managed blocks，并保留 markers 外的人工内容；“扫描”或“增量”不代表 read-only。
 - `raw` 保留来源原文，不由模型改写；`summary` 是该来源的结构化摘要。
 - 临床注册查询写入相应 `{drug_id}.md`。独立 `data-search` 只返回 plan，不写文件；`drug-build` 才将其 plan 持久化到 `.temp/plans/`。不创建全局 `trials/` 或其他全局内容根目录。
 
@@ -104,7 +105,7 @@ PREFLIGHT:
 ## 核心原则
 
 - **Index-first**：任何实体定位先查根 `index.md`，并明确处理别名和歧义。
-- **Source-first**：原始资料绝不修改；每来源恰好一个 raw 和一个 summary。
+- **Source-first**：原始资料绝不修改；每个药品内每来源恰好一个 raw 和一个 summary，跨药品允许复用来源。
 - **Incremental**：支持增量更新，避免重复处理并保留用户编辑。
 - **Structured**：严格使用规范 ID、目录和数据格式。
 - **Controlled-spawn**：默认在当前 session 完成；仅当子 skill 明确要求独立审核/验证时，允许 spawn 受限 subagent。

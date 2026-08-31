@@ -13,7 +13,7 @@ description: |
 
 - 输入由调用方明确给出；不自行扫描全库。
 - 每个 summary 独立执行定位、核对和写入。批量输入不能共享结论或证据。
-- 只允许修改 YAML 的 `verification`、`verification_fail_count` 和文件末尾 `## 数据一致性审核` 章节。
+- 只允许修改 YAML 的 `verification`、`verification_fail_count`、`verification_coverage` 和文件末尾 `## 数据一致性审核` 章节。
 - 不得修改身份字段、`indications` 数组、临床正文、图片、试验设计或专家点评。
 - 不联网、不补充数据、不用常识或外部知识弥补 raw 证据。
 - 不审核专家点评的观点；审核正文中的临床数值、试验事实、分组和图片所声称的数据。
@@ -65,10 +65,10 @@ URL 远程图片无需下载；若 summary 仅依赖远程图片而 raw 没有�
 ```markdown
 ## 数据一致性审核
 
-| 适应症 | 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
-|--------|--------|---------------|---------|------|------|
-| NSCLC | ORR | 42.3% | "...ORR was 42.3%..." | PASS | - |
-| SCLC | mPFS | 11.3 | 未找到 | FAIL | raw 中未出现该数值 |
+| indication_id | 数据项 | summary中的值 | raw证据 | 状态 | 问题 |
+|---------------|--------|---------------|---------|------|------|
+| NSCLC_1L | ORR | 42.3% | "...ORR was 42.3%..." | PASS | - |
+| SCLC_1L | mPFS | 11.3 | 未找到 | FAIL | raw 中未出现该数值 |
 ```
 
 审核覆盖完整且无 FAIL（允许 WARN）：
@@ -76,6 +76,7 @@ URL 远程图片无需下载；若 summary 仅依赖远程图片而 raw 没有�
 ```yaml
 verification: passed
 verification_fail_count: 0
+verification_coverage: complete
 ```
 
 存在 FAIL 或审核无法覆盖完整：
@@ -83,6 +84,7 @@ verification_fail_count: 0
 ```yaml
 verification: failed
 verification_fail_count: {FAIL 数量}
+verification_coverage: incomplete
 ```
 
 来源无法安全定位时不得伪造审核表或写 `passed`；返回定位失败。若文件已有审核章节，只替换最后的规范审核章节，正文中的同名文本或引用不得误删。
@@ -94,6 +96,7 @@ data-verify: {summary路径}
 - source: {解析后的 raw 路径或 unresolved}
 - indications checked: {数量/列表}
 - verification: passed / failed / unresolved
+- verification_coverage: complete / incomplete / unresolved
 - PASS / WARN / FAIL: x / y / z
 - coverage complete: yes / no
 - warnings: {需人工复核项}

@@ -23,7 +23,7 @@
 - `临床数据汇总` 和 `关键里程碑` 只能来自同药品 `summary/` 中通过一致性审核的摘要，不得直接来自 `raw/`、外部网页、PDF 或模型记忆。
 - `当前临床管线` 可直接使用 ClinicalTrials.gov 官方 API 或 chinadrugtrials.org.cn 官方注册数据，但注册信息不得用于补充临床疗效或安全性。
 - `药品专利` 可直接使用 Google Patents 或 FreePatentsOnline 检索结果，但专利信息不得用于补充临床疗效或安全性。
-- 摘要缺失、审核章节缺失、`verification` 不是 `passed`、`verification_fail_count` 不是 `0`，或审核含 `FAIL` 时，不得将其数据写入药品页。
+- 摘要缺失、审核章节缺失、`verification` 不是 `passed`、`verification_fail_count` 不是 `0`、`verification_coverage` 不是 `complete`，或审核含 `FAIL` 时，不得将其数据写入药品页。
 - 公司中英文名和别名只在根 `index.md` 集中维护，不建立 `company.md`，药品页不重复维护公司别名。
 
 ## 文件与身份
@@ -32,8 +32,8 @@
 - `drug_id` 优先级：开发代码、短名称或缩写、中文通用名、英文通用名。
 - `drug_id` 中空格和斜杠替换为 `_`，括号移除；优先使用简洁、稳定、易读的标识。
 - 同一药品只有一个规范 `drug_id`；商品名、通用名和旧代码写入 `drug_aliases`。
-- `company_id` 必须引用根索引中已有的规范公司 ID。合作开发可在 `companies` 列出多个 `company_id`，目录归属采用主要维护公司的 `company_id`。
-- `company_id` 是 Windows-safe 的常见公司短名，可以包含中文，不要求仅含 ASCII。
+- `company_id` 必须引用根索引中已有的规范公司 ID。合作开发在 `company_ids` 列出多个规范 ID，目录归属采用 `archive_company`。
+- `company_id` 和 `drug_id` 长度为 1-80，首尾必须是 Unicode 字母或数字（尾部也可为 `.`/`-`），中间只允许 Unicode 字母/数字/空格/下划线/`.`/`-`；同时不得是 Windows 保留设备名。可以包含中文和内部空格。
 
 ## Frontmatter
 
@@ -44,13 +44,14 @@ drug: 示例单抗
 drug_aliases: [ABC-123, Examplemab]
 category: 单克隆抗体
 target: HER3/EGFR
-companies: [第一三共, AstraZeneca]
+archive_company: 第一三共
+company_ids: [第一三共, AstraZeneca]
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 ---
 ```
 
-必需字段为 `drug_id`、`drug`、`target`、`companies`、`created`、`updated`。
+必需字段为 `drug_id`、`drug`、`target`、`archive_company`、`company_ids`、`created`、`updated`。兼容字段 `companies` 如存在必须与 `company_ids` 完全相同。
 
 ### target 规则
 
@@ -95,7 +96,7 @@ updated: YYYY-MM-DD
 | 通用名 | {drug} |
 | 靶点 | {target} |
 | 药物类别 | {category} |
-| 研发公司 | {companies 对应的规范公司名} |
+| 研发公司 | {company_ids 对应的规范公司名} |
 | 最高阶段 | {phase} |
 ```
 
@@ -107,6 +108,8 @@ updated: YYYY-MM-DD
 
 ```markdown
 ### {适应症名称}
+
+<!-- source_identity: {company_id}/{drug_id}/summary/{drug_id}@{source_label}.md -->
 
 > {source_label}
 

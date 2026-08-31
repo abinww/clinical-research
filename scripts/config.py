@@ -3,32 +3,64 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 
-def _value(value: str) -> str:
-    quote = None
-    comment = len(value)
-    for index, character in enumerate(value):
-        if character in {'"', "'"}:
-            if quote is None:
-                quote = character
-            elif quote == character:
-                quote = None
-        elif character == "#" and quote is None:
-            comment = index
-            break
-    if quote is not None:
-        raise ValueError("config.yaml 包含未闭合的引号")
+def restricted_scalar(value: str, context: str = "scalar") -> str:
+    """Parse the one-line scalar subset used by config and frontmatter."""
+    value = value.strip()
+    if not value:
+        return ""
+    if value.startswith("#"):
+        return ""
+    if value[0] == "'":
+        result = []
+        index = 1
+        while index < len(value):
+            if value[index] == "'":
+                if index + 1 < len(value) and value[index + 1] == "'":
+                    result.append("'")
+                    index += 2
+                    continue
+                tail = value[index + 1 :]
+                if tail and not re_full_comment(tail):
+                    raise ValueError(f"{context} contains text after a quoted scalar")
+                return "".join(result)
+            result.append(value[index])
+            index += 1
+        raise ValueError(f"{context} contains an unterminated quoted scalar")
+    if value[0] == '"':
+        escaped = False
+        for index in range(1, len(value)):
+            character = value[index]
+            if character == '"' and not escaped:
+                token = value[: index + 1]
+                tail = value[index + 1 :]
+                if tail and not re_full_comment(tail):
+                    raise ValueError(f"{context} contains text after a quoted scalar")
+                try:
+                    parsed = json.loads(token)
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    raise ValueError(f"{context} contains an invalid quoted scalar") from exc
+                if not isinstance(parsed, str):
+                    raise ValueError(f"{context} must be a string scalar")
+                return parsed
+            escaped = character == "\\" and not escaped
+            if character != "\\":
+                escaped = False
+        raise ValueError(f"{context} contains an unterminated quoted scalar")
 
-    value = value[:comment].strip()
-    if value.startswith(('"', "'")):
-        if len(value) < 2 or value[-1] != value[0]:
-            raise ValueError("config.yaml 包含无效的引号值")
-        value = value[1:-1]
-    elif '"' in value or "'" in value:
-        raise ValueError("config.yaml 包含无效的引号值")
+    # In a plain scalar, # starts a comment only when separated by whitespace.
+    for index, character in enumerate(value):
+        if character == "#" and index > 0 and value[index - 1].isspace():
+            return value[:index].rstrip()
     return value
+
+
+def re_full_comment(tail: str) -> bool:
+    stripped = tail.lstrip()
+    return len(stripped) < len(tail) and stripped.startswith("#")
 
 
 def read_config(config_path: str | Path) -> dict[str, str]:
@@ -47,7 +79,7 @@ def read_config(config_path: str | Path) -> dict[str, str]:
                 raise ValueError(f"config.yaml 第 {line_number} 行格式无效")
             if key in config:
                 raise ValueError(f"config.yaml 包含重复字段: {key}")
-            config[key] = _value(value)
+            config[key] = restricted_scalar(value, f"config.yaml line {line_number}")
     if not config.get("research_dir", "").strip():
         raise ValueError("config.yaml 缺少 research_dir")
     unexpected = set(config) - {"research_dir"}

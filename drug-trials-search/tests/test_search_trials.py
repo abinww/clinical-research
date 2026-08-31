@@ -1,17 +1,20 @@
 import io
 import sys
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 import search_trials
 from search_trials import (
     ClinicalTrialsGov,
+    ClinicalTrialsGovError,
     TrialResult,
     display_value,
     extract_countries,
     generate_markdown_table,
     generate_pipeline_markdown,
     normalize_phase,
+    search_aliases,
 )
 
 
@@ -236,6 +239,77 @@ class SearchTrialsTests(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertEqual(len(calls), 2)
 
+    def test_alias_queries_union_and_deduplicate_by_nct_id(self):
+        calls = []
+
+        class Client:
+            def search(self, drug, **_kwargs):
+                calls.append(drug)
+                ids = {
+                    "ABC123": ["NCT00000002", "NCT00000001"],
+                    "BrandX": ["NCT00000001", "NCT00000003"],
+                }[drug]
+                trials = []
+                for trial_id in ids:
+                    trial = TrialResult()
+                    trial.trial_id = trial_id
+                    trials.append(trial)
+                return trials
+
+        results = search_aliases(Client(), ["ABC123", "BrandX", "ABC123"])
+
+        self.assertEqual(calls, ["ABC123", "BrandX"])
+        self.assertEqual([trial.trial_id for trial in results], [
+            "NCT00000001", "NCT00000002", "NCT00000003",
+        ])
+        self.assertEqual(results[0].query_aliases, ["ABC123", "BrandX"])
+
+    def test_alias_union_applies_global_max_after_deduplication(self):
+        class Client:
+            def search(self, drug, **_kwargs):
+                ids = {
+                    "ABC123": ["NCT00000002", "NCT00000001"],
+                    "BrandX": ["NCT00000003", "NCT00000004"],
+                }[drug]
+                trials = []
+                for trial_id in ids:
+                    trial = TrialResult()
+                    trial.trial_id = trial_id
+                    trials.append(trial)
+                return trials
+
+        results = search_aliases(Client(), ["ABC123", "BrandX"], max_results=2)
+        self.assertEqual([trial.trial_id for trial in results], ["NCT00000001", "NCT00000002"])
+
+    def test_search_raises_typed_error_on_api_failure(self):
+        client = ClinicalTrialsGov()
+        client._open = lambda *_args: (_ for _ in ()).throw(
+            urllib.error.URLError("unavailable")
+        )
+
+        with self.assertRaises(ClinicalTrialsGovError):
+            client.search("ABC123")
+
+    def test_api_failure_returns_nonzero_and_does_not_write_output(self):
+        class Client:
+            def search(self, **_kwargs):
+                raise ClinicalTrialsGovError("source unavailable")
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch.object(search_trials, "ClinicalTrialsGov", return_value=Client()), \
+             patch.object(sys, "argv", [
+                 "search_trials.py", "--drug", "ABC123", "--format", "json",
+                 "--output", "must-not-be-written.md",
+             ]), patch("sys.stdout", stdout), patch("sys.stderr", stderr), \
+             patch("builtins.open") as open_mock:
+            status = search_trials.main()
+
+        self.assertEqual(status, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("[ERROR]", stderr.getvalue())
+        open_mock.assert_not_called()
+
     def test_json_format_writes_only_json_to_stdout(self):
         trial = TrialResult()
         trial.trial_id = "NCT00000001"
@@ -278,6 +352,23 @@ class SearchTrialsTests(unittest.TestCase):
             "HS-20093 + adebrelimab",
         )
         self.assertEqual(client._extract_control_drug(arms_mod), "Docetaxel")
+
+    def test_extract_drug_preserves_multiple_experimental_arm_boundaries(self):
+        arms_mod = {
+            "armGroups": [
+                {"label": "ABC123 and Pembrolizumab", "type": "EXPERIMENTAL"},
+                {"label": "ABC123", "type": "EXPERIMENTAL"},
+                {"label": "ABC123 and Pembrolizumab", "type": "EXPERIMENTAL"},
+                {"type": "EXPERIMENTAL", "interventionNames": [
+                    "Drug: ABC123", "Drug: Carboplatin",
+                ]},
+            ],
+        }
+
+        self.assertEqual(
+            self._client()._extract_drug_from_interventions(arms_mod, "title"),
+            "ABC123 + Pembrolizumab; ABC123; ABC123 + Carboplatin",
+        )
 
     def test_extract_drug_supports_biological_intervention(self):
         arms_mod = {

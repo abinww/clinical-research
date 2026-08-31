@@ -42,7 +42,7 @@ description: |
 
 1. 首先读取 `{clinical_research_dir}/config.yaml`，配置只能提供一个绝对路径 `research_dir`。配置缺失、无效或路径不可读时停止，按顶层 skill 的初始化流程处理；不得从旧字段或目录结构推断路径。
 2. 配置解析成功后，立即首先读取 `{research_dir}/index.md`。根索引不可读时停止；不得先扫描目录或搜索 web。
-3. 读取 `../drug-identity/SKILL.md`，按其中 workflow 用根索引解析输入名称；未命中时才按该 workflow 搜索可靠来源补充确认。
+3. 读取 `../drug-identity/SKILL.md`，只以 `mode: resolve_only` 调用：用根索引解析输入名称，未命中时才搜索可靠来源补充确认。即使是新药，也只返回拟议身份/路径；不得创建目录、药品页或根索引条目。
 4. 获取包含规范身份和已解析目录的完整上下文：
 
 ```text
@@ -51,19 +51,21 @@ company_id: {规范归档公司 ID}
 drug_id: {按固定优先级确定}
 drug_aliases: {研发代号/合作方代号/商品名等全集}
 target: {最简形式}
-companies: {研发公司及合作方}
+archive_company: {规范归档公司 ID}
+company_ids: {研发公司及合作方的规范 company_id 列表}
 molecule_type: {ADC/双抗/单抗/小分子}
 drug_dir: {research_dir}/{company_id}/{drug_id}
 drug_page: {drug_dir}/{drug_id}.md
 raw_dir: {drug_dir}/raw
 summary_dir: {drug_dir}/summary
+attachments_dir: {research_dir}/attachments
 ```
 
 （drug 展示名从 drug_aliases 中选取通用名。）
 
 校验所有解析目录都位于 `research_dir` 内并符合当前 2.0 布局。后续步骤原样传递该上下文，不得自行重选 `company_id`、`drug_id` 或目录。此 workflow 不支持 v1 路径，不执行兼容查找或迁移。
 
-如果无法唯一确认药物身份或归档公司，停下返回用户确认，不进入后续步骤。
+如果无法唯一确认药物身份或归档公司，停下返回用户确认，不进入后续步骤。整个 data-search 保持 no-write：identity、扫描和搜索均不得创建、修改或删除研究文件。
 
 ## Step 2: 官方临床试验注册库
 
@@ -117,20 +119,20 @@ python {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id 或�
 4. 二手媒体的数字一律不直接用，不作为 plan 表来源
 5. 媒体 URL 不进入 plan 表
 
-## Step 6.5: 全库排除已提取来源（增量建档）
+## Step 6.5: 排除当前药品已提取来源（增量建档）
 
-使用配置扫描整个 2.0 研究库中所有来源的 YAML frontmatter `source:` 字段，建立“已提取 canonical source 集合”。URL 身份是 raw 中持久化的用户准确提供 URL 或工作流选定的准确 canonical final URL；比较时保持原字符串，不得 percent decode 或改写查询参数、尾部斜杠、大小写及编码形式。本地 PDF 身份是 resolved absolute POSIX path，在 Windows 上必须等于 `Path.resolve().as_posix()`。不得传入或推断全局 `raw_dir`：
+使用配置只读扫描整个 2.0 研究库中所有来源的 YAML frontmatter `source:` 字段；结果必须保留 raw 相对路径，以筛选当前药品。URL 保持 raw 中的准确字符串；本地 PDF 身份必须是 `Path.resolve(strict=True).as_posix()` 得到的 resolved absolute POSIX path。不得传入或推断旧全局 `raw_dir`：
 
 ```text
-python {clinical_research_dir}/scripts/scan_sources.py --config {clinical_research_dir}/config.yaml --format urls
+python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" --format urls --strict
 ```
 
-对 Step 3-6 收集的候选 URL：
+这里的 `raw_dir` 是 `resolve_only` 返回的当前药品拟议/既有目录，不是旧版全局 raw；目录不存在时已提取集合为空。strict 扫描出现损坏 frontmatter、路径逃逸或配对异常时停止并报告，不能用部分结果做排除。以 `(company_id, drug_id, source)` 为准确重复键。对 Step 3-6 收集的候选 URL：
 
-- **已在研究库中提取过**（canonical source 准确字符串匹配）→ 剔除，不进入 plan 表
+- **已在当前药品树中提取过**（canonical source 准确字符串匹配）→ 剔除，不进入 plan 表
 - **未提取过** → 保留，进入 Step 7
 
-这样增量建档时只搜索新增数据源，不跨药品重复收集已提取的来源。所有工作流都必须比较 raw 中同一个 canonical 值；不得用 percent-decoded URL、PDF 文件名、相对路径或反斜杠路径替代。
+相同 `source` 位于其他药品树时属于允许的跨药复用，必须保留，不得阻塞。所有工作流都比较 raw 中同一个 canonical 值；不得用 percent-decoded URL、PDF 文件名、相对路径或反斜杠路径替代。
 
 ## Step 7: 内容判断与去重
 
@@ -172,7 +174,7 @@ python {clinical_research_dir}/scripts/scan_sources.py --config {clinical_resear
 # {drug_id} 临床数据来源 plan
 
 > 生成时间: {YYYY-MM-DD}
-> 药品身份: {drug_id} | {drug} | target: {target} | 公司: {companies}
+> 药品身份: {drug_id} | {drug} | target: {target} | 归档公司: {archive_company} | 公司 IDs: {company_ids}
 > 别名全集: {别名列表}
 > 搜索范围: {使用的搜索词}
 

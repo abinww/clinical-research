@@ -34,18 +34,20 @@ description: |
 - **适应症**（可选）：如 "非小细胞肺癌"、"NSCLC"
 - **Sponsor**（可选）：如 "Merck"、"AstraZeneca"
 
-调用 `../drug-identity/SKILL.md` 解析药品身份，获取标准身份与位置对象（包括 drug_id、drug_aliases、target、companies、molecule_type、drug_page；drug 展示名从 drug_aliases 选取）。无法确认身份或未返回已解析的 `drug_page` 时停下询问用户。
+以 `mode: resolve_or_create` 调用 `../drug-identity/SKILL.md`，获取并原样使用完整标准身份与位置对象（包括 `drug_id`、`drug_aliases`、`target`、`company_ids`、`company_id`、`research_dir`、`drug_page`、`attachments_dir`、`mode`、`status`；兼容字段 `companies` 如存在必须与 `company_ids` 相同）。无法确认身份或未返回已解析的 `drug_page` 时停下询问用户。
 
-CTG 查询时使用 `drug_id` 及 `drug_aliases` 中的主要别名作为查询词（避免只给商品名时搜不到研发代号登记的试验）。
+CTG 查询时使用 `drug_id` 及 `drug_aliases` 中的主要别名作为独立查询词（避免只给商品名时搜不到研发代号登记的试验）。每个去重后的别名各发起一次 CTG 查询，结果由脚本按 NCT 编号确定性合并。
 
 ## Step 2: 执行 clinicaltrials.gov 查询
 
 调用 Python 脚本：
 ```bash
-python {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适应症>"] --source ctg --format pipeline-markdown
+python {skill_dir}/search_trials.py --drug "<drug_id>" --drug "<主要别名1>" [--drug "<主要别名2>"] [--indication "<适应症>"] --source ctg --format pipeline-markdown
 ```
 
 脚本使用 clinicaltrials.gov 官方 API，负责字段提取、治疗方案整理、注册国家去重、排序和 schema 对齐的 Markdown 渲染。agent 不得从 API 原始数据自行提取、补全或改写临床字段。
+
+脚本退出码为 0 才表示查询成功（包括真实的零结果）。非零退出码及 stderr 中的 `[ERROR]` 表示 API/数据源失败；此时不得把空结果视为“未找到”，不得展示或写入 `drug_page`，应报告数据源失败并保留现有管线内容不变。
 
 ## Step 3: 处理脚本输出
 
@@ -93,7 +95,7 @@ python {skill_dir}/search_trials.py --drug "<药品名称>" [--indication "<适�
 - **排序**：按阶段（Phase III → II → I），同阶段按开始日期倒序
 - **⚠️ trial_id 格式**：脚本返回的 trial_id 已包含完整标识符（如 `NCT06104566`），构造 Markdown 链接时直接使用 `[{trial_id}]({url})`，**不要额外添加 `NCT` 前缀**
 
-> 药品列/对照列等字段由脚本按 CTG armGroups 生成（EXPERIMENTAL → 药品，ACTIVE_COMPARATOR/PLACEBO_COMPARATOR → 对照），agent 不得自行改写这些脚本生成字段。
+> 药品列/对照列等字段由脚本按 CTG armGroups 生成（所有不同的 EXPERIMENTAL arm 均保留，arm 内联用以 ` + ` 分隔、arm 之间以 `; ` 分隔；ACTIVE_COMPARATOR/PLACEBO_COMPARATOR → 对照），agent 不得自行改写这些脚本生成字段。
 
 ### 4.4 写入
 

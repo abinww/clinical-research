@@ -44,6 +44,19 @@ description: |
 5. **不猜测**：身份、公司归属或冲突无法可靠消解时，停止并询问用户；确认前不创建文件或目录。
 6. **幂等创建**：重复解析不得产生第二套目录、第二个药品页或重复索引项。
 
+## 调用模式
+
+调用方必须显式传入模式；未传入时停止，不得猜测：
+
+- `resolve_only`：只读解析配置、根索引和可靠 web 来源，返回身份及既有或拟议的完整路径；不创建目录，不写药品页或根索引。供 `data-search` 等 no-write 工作流使用。
+- `resolve_or_create`：解析后可按 Step 5-6 幂等创建布局并更新根索引。仅写入型编排可使用。
+
+两种模式共用 Step 1-4。`resolve_only` 在 Step 4 后直接执行只读版 Step 7；新药可返回 `status: resolved` 和拟议路径，但不得暗示路径已存在。只有 `resolve_or_create` 执行 Step 5-6。
+
+## 标识符语法
+
+`company_id`、`drug_id` 必须是 1-80 个 Unicode 字符的单一路径组件。允许中文、ASCII 字母、数字、空格、`.`、`_`、`-`；禁止控制字符及 `< > : " / \\ | ? * @ # % [ ] ^`，不得为 `.` 或 `..`，不得以空格或句点结尾，也不得是 Windows 保留设备名（不区分大小写，包括带扩展名形式）。既有索引值不合规时停止并报告，不得静默改写。
+
 ## Step 1: 读取配置与根索引
 
 读取 `../config.yaml` 的唯一配置项 `research_dir`，然后首先读取 `{research_dir}/index.md`。
@@ -54,7 +67,7 @@ description: |
 
 - `drug_id`
 - 通用名
-- aliases（研发代号、合作方代号、其他通用名和商品名）
+- `drug_aliases`（研发代号、合作方代号、其他通用名和商品名）
 
 匹配应忽略无语义的大小写和首尾空白差异，但不得用模糊相似度把两个药物合并。
 
@@ -87,7 +100,7 @@ description: |
 开发代码 > 短名称/缩写 > 中文通用名 > 英文通用名
 ```
 
-`drug_id` 是目录名和药品页文件名。其他名称统一作为 aliases；通用名单独作为常用展示名。名称不得包含 Windows 禁止字符、保留设备名，不得以空格或句点结尾。
+`drug_id` 是目录名和药品页文件名。其他名称统一作为 `drug_aliases`；通用名单独作为常用展示名。候选必须满足上述严格标识符语法。
 
 如果候选 `drug_id` 已被根索引中的另一药物占用，停止并询问用户，不自动加后缀。
 
@@ -112,7 +125,7 @@ description: |
 
 公司选择只确定归档位置，不表达永久所有权。后续所有权变化更新根索引规则或药品信息，但不自动迁移已有目录。
 
-## Step 5: 创建药品布局
+## Step 5: 创建药品布局（仅 `resolve_or_create`）
 
 身份和归档公司均确认后，创建或补齐：
 
@@ -131,7 +144,7 @@ description: |
 - 已有值与新证据冲突时不覆盖，记录冲突并询问用户。
 - 任一步创建或写入失败时停止，报告已完成和失败的路径；不得让调用方假定布局完整。
 
-## Step 6: 串行更新根索引
+## Step 6: 串行更新根索引（仅 `resolve_or_create`）
 
 药品布局成功后再更新 `{research_dir}/index.md`：
 
@@ -150,7 +163,7 @@ description: |
 
 完成后重新读取根索引和药品页，验证：
 
-- 输入名称和全部已确认 aliases 唯一命中同一 `drug_id`。
+- 输入名称和全部已确认 `drug_aliases` 唯一命中同一 `drug_id`。
 - 索引链接、`company_id` 和实际路径一致。
 - `drug_page` 存在，`raw_dir` 与 `summary_dir` 是目录。
 - 重复执行不会创建额外条目、页面或目录。
@@ -162,15 +175,20 @@ drug_id: {drug_id}
 common_name: {通用名}
 drug_aliases: {别名列表}
 target: {最简形式}
-companies: {原研方、当前权利方及合作方}
+archive_company: {归档公司短名，与 company_id 一致}
+company_ids: {原研方、当前权利方及合作方对应的根索引规范 company_id 列表}
+companies: {仅兼容字段；如返回，必须与 company_ids 完全相同，不得放展示名或关系描述}
+company_relationships: {可选；company_id + role 对象列表，不参与路径解析}
 molecule_type: {类型}
 company_id: {归档公司短名}
-archive_company: {归档公司}
-drug_dir: {绝对路径}
-drug_page: {绝对路径}
-raw_dir: {绝对路径}
-summary_dir: {绝对路径}
-status: {created|existing|updated}
+research_dir: {配置解析后的绝对路径}
+drug_dir: {research_dir/company_id/drug_id 的绝对路径}
+drug_page: {drug_dir/drug_id.md 的绝对路径}
+raw_dir: {drug_dir/raw 的绝对路径}
+summary_dir: {drug_dir/summary 的绝对路径}
+attachments_dir: {research_dir/attachments 的绝对路径}
+mode: {resolve_only|resolve_or_create}
+status: {resolved|created|existing|updated}
 ```
 
 若尚未解决身份、归档公司或冲突，只返回问题和候选，不返回可供后续写入使用的成功对象。

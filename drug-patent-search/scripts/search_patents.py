@@ -61,6 +61,7 @@ class PatentResult:
     title: str = "—"
     assignee: str = "—"
     filing_date: str = "—"
+    priority_date: str = "—"
     grant_date: str = "—"
     publication_date: str = "—"
     url: str = "—"
@@ -68,6 +69,7 @@ class PatentResult:
     cpc: list = field(default_factory=list)
     patent_type: str = "other"
     remark: str = "—"
+    provenance: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +77,7 @@ class PatentResult:
             "title": self.title,
             "assignee": self.assignee,
             "filing_date": self.filing_date,
+            "priority_date": self.priority_date,
             "grant_date": self.grant_date,
             "publication_date": self.publication_date,
             "url": self.url,
@@ -82,6 +85,7 @@ class PatentResult:
             "cpc": self.cpc,
             "patent_type": self.patent_type,
             "remark": self.remark,
+            "provenance": self.provenance,
         }
 
 
@@ -121,6 +125,26 @@ def date_ym(value: str) -> tuple:
     if m:
         return int(m.group(1)), int(m.group(2))
     return 0, 0
+
+
+def date_ymd(value: str) -> tuple:
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", norm_date(value))
+    if m:
+        return tuple(int(part) for part in m.groups())
+    return 0, 0, 0
+
+
+def validate_filter_date(value: Optional[str], option: str) -> Optional[str]:
+    """Require complete, calendar-valid YYYY-MM-DD filter dates."""
+    if value is None:
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError(f"{option} 必须为 YYYY-MM-DD")
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as exc:
+        raise ValueError(f"{option} 不是有效日期") from exc
+    return value
 
 
 def classify_patent(title: str, cpc_codes: Optional[list] = None) -> str:
@@ -163,15 +187,33 @@ def cpc_remark(cpc_codes: Optional[list] = None) -> str:
 
 
 def merge_results(results: list[PatentResult]) -> list[PatentResult]:
-    """按公开号去重（保留首次出现）。"""
+    """按公开号去重，并合并查询来源及首条记录缺失的结构化字段。"""
     merged = {}
     for pr in results:
-        key = pr.publication_number.strip()
+        key = re.sub(r"[^A-Z0-9]", "", pr.publication_number.upper())
         if not key or key == "—":
             continue
         if key not in merged:
             merged[key] = pr
+            continue
+        current = merged[key]
+        for name in ("title", "assignee", "filing_date", "priority_date",
+                     "grant_date", "publication_date", "url", "remark"):
+            if getattr(current, name) == "—" and getattr(pr, name) != "—":
+                setattr(current, name, getattr(pr, name))
+        current.cpc = list(dict.fromkeys(current.cpc + pr.cpc))
+        current.provenance = list(dict.fromkeys(current.provenance + pr.provenance))
+        if current.cpc:
+            current.patent_type = classify_patent(current.title, current.cpc)
+            current.remark = cpc_remark(current.cpc)
     return list(merged.values())
+
+
+def _as_list(value) -> list[str]:
+    if value is None:
+        return []
+    values = value if isinstance(value, list) else [value]
+    return list(dict.fromkeys(str(item).strip() for item in values if str(item).strip()))
 
 
 def _fetch(url: str, headers: dict, timeout: int, delay: float,
@@ -212,53 +254,58 @@ class GooglePatents:
         self.retries = retries
 
     def search(self, query_terms: Optional[list] = None,
-               assignee: Optional[str] = None, country: Optional[str] = None,
+               component_terms: Optional[list] = None,
+               assignee=None, country: Optional[str] = None,
                after: Optional[str] = None, before: Optional[str] = None,
                max_results: int = 200) -> list[PatentResult]:
         """执行一个或多个查询并合并去重。
 
-        - query_terms 为空时（公司模式）只按 assignee 检索。
-        - after/before 传给 GP 过滤，并在 Python 侧按申请日/优先权日再过滤一次。
+        - query_terms 为空时（公司模式）逐个按 assignee 检索。
+        - after/before 传给 GP，并在 Python 侧严格按完整申请日二次过滤。
+          priority_date 仅作为独立字段报告，不代替申请日。
         """
-        if not query_terms and not assignee:
+        if not query_terms and not component_terms and not assignee:
             raise ValueError("drug 模式至少需要一个 --query，company 模式至少需要 --assignee")
 
         all_patents: list[PatentResult] = []
-        queries = self._build_queries(query_terms or [], assignee)
+        queries = self._build_queries(query_terms or [], _as_list(assignee),
+                                      component_terms or [])
         first_error = None
-        for q, asg in queries:
+        for q, asg, provenance in queries:
             try:
                 page_patents = self._query_page(q=q, assignee=asg, country=country,
-                                                after=after, before=before,
-                                                max_results=max_results)
+                                                 after=after, before=before,
+                                                 max_results=max_results,
+                                                 provenance=provenance)
                 all_patents.extend(page_patents)
             except SourceUnavailable as exc:
                 if first_error is None:
                     first_error = exc
                 continue
 
-        if first_error is not None and not all_patents:
+        if first_error is not None:
             raise first_error
 
         results = merge_results(all_patents)
         if after or before:
             results = self._filter_by_date(results, after, before)
-        return results
+        return results[:max_results]
 
-    def _build_queries(self, terms: list[str],
-                       assignee: Optional[str]) -> list[tuple[Optional[str], Optional[str]]]:
-        """构造查询对 (q, assignee)。
-
-        - 每个别名独立成 q 查询（名称轴）。
-        - 公司轴：主别名 + assignee。
-        - 仅 assignee（公司模式）。
-        """
+    def _build_queries(self, terms: list[str], assignees: list[str],
+                       components: Optional[list[str]] = None) -> list[tuple]:
+        """构造独立名称/组件轴，以及每个申请人 x 每个药品别名轴。"""
         pairs = []
-        if assignee:
-            main = terms[0] if terms else None
-            pairs.append((main, assignee))
         for term in terms:
-            pairs.append((term, None))
+            pairs.append((term, None, f"alias:{term}"))
+        for term in components or []:
+            pairs.append((term, None, f"component:{term}"))
+        for assignee in assignees:
+            if terms:
+                for term in terms:
+                    pairs.append((term, assignee,
+                                  f"assignee:{assignee} x alias:{term}"))
+            else:
+                pairs.append((None, assignee, f"assignee:{assignee}"))
         # 去重
         seen = set()
         deduped = []
@@ -269,7 +316,7 @@ class GooglePatents:
         return deduped
 
     def _query_page(self, q, assignee, country, after, before,
-                    max_results: int) -> list[PatentResult]:
+                    max_results: int, provenance: str = "—") -> list[PatentResult]:
         patents: list[PatentResult] = []
         page = 1
         while True:
@@ -279,7 +326,7 @@ class GooglePatents:
                 raise SourceUnavailable("Google Patents 不可用（网络/限流/被屏蔽）")
             results_info = data.get("results") or {}
             total = int(results_info.get("total_num_results") or 0)
-            page_patents = self._parse(data)
+            page_patents = self._parse(data, provenance)
             patents.extend(page_patents)
             if not page_patents or len(patents) >= max_results or len(patents) >= total:
                 break
@@ -329,7 +376,7 @@ class GooglePatents:
         return None
 
     @staticmethod
-    def _parse(data: dict) -> list[PatentResult]:
+    def _parse(data: dict, provenance: str = "—") -> list[PatentResult]:
         patents = []
         clusters = data.get("results", {}).get("cluster") or []
         for cluster in clusters:
@@ -344,34 +391,53 @@ class GooglePatents:
                 assignees = [strip_html(a) for a in raw_assignees]
                 title = strip_html(p.get("title", ""))
                 filing = norm_date(p.get("filing_date") or p.get("application_date") or "")
+                priority = norm_date(p.get("priority_date") or "")
                 grant = norm_date(p.get("grant_date") or "")
+                publication = norm_date(p.get("publication_date") or "")
+                codes = GooglePatents._extract_codes(p)
                 pr = PatentResult(
                     publication_number=pub,
                     title=display_value(title),
                     assignee="; ".join(a for a in assignees if a) or "—",
                     filing_date=filing,
+                    priority_date=priority,
                     grant_date=grant,
-                    publication_date=filing if not grant else grant,
+                    publication_date=publication,
                     url=f"https://patents.google.com/patent/{pub}/en",
                     source="GP",
+                    cpc=codes,
+                    provenance=[] if provenance == "—" else [provenance],
                 )
-                pr.patent_type = classify_patent(title, None)
+                pr.patent_type = classify_patent(title, codes)
+                pr.remark = cpc_remark(codes)
                 patents.append(pr)
         return patents
 
     @staticmethod
+    def _extract_codes(patent: dict) -> list[str]:
+        values = []
+        for key in ("cpc", "cpc_code", "classification", "classifications"):
+            raw = patent.get(key) or []
+            if not isinstance(raw, list):
+                raw = [raw]
+            for item in raw:
+                text = item if isinstance(item, str) else json.dumps(item)
+                values.extend(FreePatentsOnline.CODE_RE.findall(strip_html(text)))
+        return list(dict.fromkeys(values))
+
+    @staticmethod
     def _filter_by_date(results: list[PatentResult],
                         after: Optional[str], before: Optional[str]) -> list[PatentResult]:
-        a_ym = date_ym(after) if after else (0, 0)
-        b_ym = date_ym(before) if before else (9999, 99)
+        a_date = date_ymd(after) if after else (0, 0, 0)
+        b_date = date_ymd(before) if before else (9999, 12, 31)
         out = []
         for pr in results:
-            ym = date_ym(pr.filing_date)
-            if (ym[0] == 0 and pr.filing_date == "—") or ym == (0, 0):
+            filing_date = date_ymd(pr.filing_date)
+            if filing_date == (0, 0, 0):
                 continue
-            if a_ym != (0, 0) and ym < a_ym:
+            if filing_date < a_date:
                 continue
-            if b_ym != (9999, 99) and ym > b_ym:
+            if filing_date > b_date:
                 continue
             out.append(pr)
         return out
@@ -399,33 +465,38 @@ class FreePatentsOnline:
         self.retries = retries
 
     def search(self, query_terms: Optional[list] = None,
-               assignee: Optional[str] = None,
+               component_terms: Optional[list] = None,
+               assignee=None,
                after: Optional[str] = None, before: Optional[str] = None,
                max_results: int = 15) -> list[PatentResult]:
-        if not query_terms and not assignee:
+        if not query_terms and not component_terms and not assignee:
             raise ValueError("至少需要一个查询词或公司名")
-        expr = self._build_expr(query_terms or [], assignee)
-        html = self._list_page(expr)
-        if html is None:
-            raise SourceUnavailable("FreePatentsOnline 不可用（网络/限流）")
-        rows = self._parse_list(html)
         results = []
-        for pub, href, title in rows:
-            time.sleep(self.detail_delay)
-            detail = self._detail_page(f"{FPO_BASE}{href}")
-            pr = self._parse_detail(pub, title, detail)
-            if after or before:
-                ym = date_ym(pr.filing_date)
-                if ym == (0, 0):
+        first_error = None
+        queries = self._build_queries(query_terms or [], _as_list(assignee),
+                                      component_terms or [])
+        for expr, provenance in queries:
+            page = self._list_page(expr)
+            if page is None:
+                first_error = first_error or SourceUnavailable(
+                    "FreePatentsOnline 不可用（网络/限流）")
+                continue
+            for pub, href, title in self._parse_list(page):
+                time.sleep(self.detail_delay)
+                detail = self._detail_page(f"{FPO_BASE}{href}")
+                pr = self._parse_detail(pub, title, detail)
+                pr.provenance = [provenance]
+                filing_date = date_ymd(pr.filing_date)
+                if (after or before) and filing_date == (0, 0, 0):
                     continue
-                if after and ym < date_ym(after):
+                if after and filing_date < date_ymd(after):
                     continue
-                if before and ym > date_ym(before):
+                if before and filing_date > date_ymd(before):
                     continue
-            results.append(pr)
-            if len(results) >= max_results:
-                break
-        return results
+                results.append(pr)
+        if first_error is not None:
+            raise first_error
+        return merge_results(results)[:max_results]
 
     def _build_expr(self, terms: list[str], assignee: Optional[str]) -> str:
         parts = []
@@ -434,6 +505,23 @@ class FreePatentsOnline:
         for term in terms:
             parts.append(f'SPEC/"{term}"')
         return " AND ".join(parts)
+
+    def _build_queries(self, terms: list[str], assignees: list[str],
+                       components: Optional[list[str]] = None) -> list[tuple[str, str]]:
+        queries = []
+        for term in terms:
+            queries.append((self._build_expr([term], None), f"alias:{term}"))
+        for term in components or []:
+            queries.append((self._build_expr([term], None), f"component:{term}"))
+        for assignee in assignees:
+            if terms:
+                for term in terms:
+                    queries.append((self._build_expr([term], assignee),
+                                    f"assignee:{assignee} x alias:{term}"))
+            else:
+                queries.append((self._build_expr([], assignee),
+                                f"assignee:{assignee}"))
+        return list(dict.fromkeys(queries))
 
     def _list_page(self, expr: str) -> Optional[str]:
         q = urllib.parse.quote(expr, safe="")
@@ -466,10 +554,12 @@ class FreePatentsOnline:
         if not html:
             return pr
         filing = re.search(r"Filing Date:</div>\s*<div class=\"disp_elm_text\">\s*([\d/]+)", html)
+        priority = re.search(r"Priority Date:</div>\s*<div class=\"disp_elm_text\">\s*([\d/]+)", html)
         pubdate = re.search(r"Publication Date:</div>\s*<div class=\"disp_elm_text\">\s*([\d/]+)", html)
         issue = re.search(r"Issue Date:</div>\s*<div class=\"disp_elm_text\">\s*([\d/]+)", html)
         asg = re.search(r"Assignee:</div>\s*<div class=\"disp_elm_text\">\s*([^<]+)", html)
         pr.filing_date = norm_date(filing.group(1) if filing else "")
+        pr.priority_date = norm_date(priority.group(1) if priority else "")
         pr.publication_date = norm_date(pubdate.group(1) if pubdate else "")
         pr.grant_date = norm_date(issue.group(1) if issue else "")
         if asg:
@@ -490,21 +580,24 @@ class PatentSearch:
         self.fpo = FreePatentsOnline(delay=fpo_delay)
 
     def run(self, mode: str, query_terms: Optional[list] = None,
-            assignee: Optional[str] = None, country: Optional[str] = None,
+            component_terms: Optional[list] = None, assignee=None,
+            country: Optional[str] = None,
             after: Optional[str] = None, before: Optional[str] = None,
             max_results: int = 100) -> tuple[list[PatentResult], str]:
         if self.source in ("auto", "gp"):
             try:
                 results = self.gp.search(
-                    query_terms=query_terms, assignee=assignee, country=country,
+                    query_terms=query_terms, component_terms=component_terms,
+                    assignee=assignee, country=country,
                     after=after, before=before,
                     max_results=max(1, min(max_results, 200)))
                 return results, "GP"
             except SourceUnavailable:
                 if self.source == "gp":
-                    return [], "GP"
+                    raise
         results = self.fpo.search(
-            query_terms=query_terms, assignee=assignee,
+            query_terms=query_terms, component_terms=component_terms,
+            assignee=assignee,
             after=after, before=before,
             max_results=max(1, min(max_results, 15)))
         return results, "FPO"
@@ -539,6 +632,22 @@ def _fmt_counter(counter: Counter, total: int) -> str:
     return " · ".join(f"{k} {v}" for k, v in items) or "—"
 
 
+def classification_note(patents: list[PatentResult], source: str) -> str:
+    if source != "GP":
+        return "CPC/IPC（可获得时）或标题启发式"
+    classified = sum(bool(pr.cpc) for pr in patents)
+    if not classified:
+        return "标题启发式（GP XHR 未返回 CPC）"
+    if classified == len(patents):
+        return "GP XHR 返回的 CPC/分类号 + 标题启发式"
+    return f"混合：{classified} 件有 CPC/分类号，其余为标题启发式"
+
+
+def provenance_note(patents: list[PatentResult]) -> str:
+    counts = Counter(axis for patent in patents for axis in patent.provenance)
+    return _fmt_counter(counts, len(patents))
+
+
 def render_drug_markdown(patents: list[PatentResult], source: str) -> str:
     if not patents:
         return "未找到相关专利。\n"
@@ -555,6 +664,8 @@ def render_drug_markdown(patents: list[PatentResult], source: str) -> str:
         "",
         f"> 更新时间: {updated}",
         f"> 数据来源: {source_note}",
+        f"> 分类依据: {classification_note(patents, source)}",
+        f"> 查询轴命中: {provenance_note(patents)}",
         "> 类型: compound=核心物质 · combo=联合用药 · use=用途/生物标志物 · other=平台延伸/其他",
         f"> 类型分布: {type_str}",
         f"> 申请人分布: {_fmt_counter(assignee_cnt, len(patents))}",
@@ -593,6 +704,8 @@ def render_company_markdown(patents: list[PatentResult], assignee: str,
         "",
         f"> 更新时间: {updated}",
         f"> 数据来源: {source_note}",
+        f"> 分类依据: {classification_note(patents, source)}",
+        f"> 查询轴命中: {provenance_note(patents)}",
         f"> 查询: assignee={assignee} · 时间窗 {window} · country={country or '全部'}",
         f"> 命中: {len(patents)} 件",
         "",
@@ -644,6 +757,8 @@ def build_json(patents: list[PatentResult], source: str,
         "patents": [pr.to_dict() for pr in patents],
         "type_distribution": dict(aggregate_by_type(patents)),
         "assignee_distribution": dict(aggregate_by_assignee(patents)),
+        "query_axis_hits": dict(Counter(
+            axis for patent in patents for axis in patent.provenance)),
     }
     if mode == "company":
         payload["type_year"] = aggregate_type_year(patents)
@@ -654,8 +769,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="药物/公司专利检索")
     parser.add_argument("--mode", choices=["drug", "company"], default="drug")
     parser.add_argument("--query", "-q", action="append",
-                        help="搜索词（别名/组件名，可多次传入）")
-    parser.add_argument("--assignee", "-a", help="申请人/公司名")
+                        help="药品别名（可多次传入，每个别名单独查询）")
+    parser.add_argument("--component", action="append",
+                        help="组件名（可多次传入，每个组件单独查询）")
+    parser.add_argument("--assignee", "-a", action="append",
+                        help="申请人/公司名（可多次传入）")
     parser.add_argument("--country", help="国家代码过滤（如 CN、US）")
     parser.add_argument("--after", help="申请日下限 YYYY-MM-DD")
     parser.add_argument("--before", help="申请日上限 YYYY-MM-DD")
@@ -663,17 +781,25 @@ def main() -> int:
     parser.add_argument("--max", type=int, default=100, help="最大结果数（drug 模式）")
     parser.add_argument("--format", choices=["markdown", "json"], default="markdown")
     args = parser.parse_args()
+    try:
+        args.after = validate_filter_date(args.after, "--after")
+        args.before = validate_filter_date(args.before, "--before")
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.after and args.before and args.after > args.before:
+        parser.error("--after 不得晚于 --before")
 
     if args.mode == "company" and not args.assignee:
         parser.error("company 模式必须提供 --assignee")
-    if args.mode == "drug" and not args.query:
-        parser.error("drug 模式至少需要一个 --query")
+    if args.mode == "drug" and not (args.query or args.component):
+        parser.error("drug 模式至少需要一个 --query 或 --component")
 
     runner = PatentSearch(source=args.source)
     max_results = args.max if args.max else (100 if args.mode == "drug" else 100)
     try:
         patents, used_source = runner.run(
-            mode=args.mode, query_terms=args.query, assignee=args.assignee,
+            mode=args.mode, query_terms=args.query, component_terms=args.component,
+            assignee=args.assignee,
             country=args.country, after=args.after, before=args.before,
             max_results=max_results)
     except SourceUnavailable as exc:
@@ -686,6 +812,7 @@ def main() -> int:
     if args.format == "json":
         query_info = {
             "mode": args.mode, "query": args.query, "assignee": args.assignee,
+            "component": args.component,
             "country": args.country, "after": args.after, "before": args.before,
         }
         print(json.dumps(build_json(patents, used_source, args.mode, query_info),
@@ -693,7 +820,7 @@ def main() -> int:
         return 0
 
     if args.mode == "company":
-        print(render_company_markdown(patents, args.assignee or "",
+        print(render_company_markdown(patents, "; ".join(args.assignee or []),
                                       args.after or "", args.before or "",
                                       args.country or "", used_source))
     else:

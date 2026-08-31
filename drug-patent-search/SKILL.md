@@ -18,7 +18,7 @@ description: |
 - ✅ 必须使用 Python 脚本执行搜索和字段提取（`search_patents.py`），agent 不得自行手工改写脚本生成的字段
 - ✅ 数据源优先级：**先 Google Patents（GP）**，GP 不可用（网络/限流/被屏蔽）时自动降级 FreePatentsOnline（FPO）
 - ✅ GP 覆盖全球含 CN；FPO 仅 US 为主、无 CN —— 降级时必须在报告中声明 CN 覆盖丢失
-- ✅ 类型由脚本按 CPC/IPC 分类号映射、缺失时按标题启发式判定；类型为推断，最终以权利要求为准
+- ✅ 类型由脚本按可获得的 CPC/IPC 分类号映射、缺失时按标题启发式判定；GP XHR 未返回分类号时必须明确为标题推断，不得声称使用了 CPC
 - ❌ 本 skill 不提供法律状态（有效/失效/到期）、不输出到期日、不做 FTO 法律结论
 - ❌ 不猜测药品身份（沿用 drug-identity 规则）
 
@@ -52,7 +52,7 @@ description: |
 
 ### Mode A
 
-读取 `../drug-identity/SKILL.md`，按 workflow 获取标准身份与位置对象（包括 drug_id、drug_aliases、target、companies、molecule_type、drug_page；展示名从 drug_aliases 选取）。
+以 `mode: resolve_or_create` 读取并执行 `../drug-identity/SKILL.md`，获取并原样使用完整标准身份与位置对象（包括 `drug_id`、`drug_aliases`、`target`、`company_ids`、`company_id`、`research_dir`、`drug_page`、`attachments_dir`、`mode`、`status`；兼容字段 `companies` 如存在必须与 `company_ids` 相同）。
 
 无法确认身份时停下返回用户确认，不进入后续步骤。
 
@@ -71,13 +71,13 @@ description: |
 | 轴 | 查询词（--query） | 目的 |
 |----|------------------|------|
 | 名称轴 | drug_aliases 逐个（研发代号、通用名、商品名） | 直接提及药名的专利 |
-| 组件轴 | payload/linker/抗体组分名（ADC 等复合药） | 组件级专利（如 deruxtecan/DXd） |
-| 公司轴 | `--assignee` 传入研发公司及合作方 × 主别名 | 该公司相关专利（联用/平台） |
+| 组件轴 | `--component` 逐个传入 payload/linker/抗体组分名（ADC 等复合药） | 组件级专利（如 deruxtecan/DXd） |
+| 公司轴 | 重复 `--assignee` 传入研发公司及合作方 × 每个相关药品别名 | 该公司相关专利（联用/平台） |
 
 示例（Enhertu）：
 ```text
 python {skill_dir}/scripts/search_patents.py --mode drug \
-  --query "trastuzumab deruxtecan" --query "DS-8201" --query "deruxtecan" \
+  --query "trastuzumab deruxtecan" --query "DS-8201" --component "deruxtecan" \
   --assignee "Daiichi Sankyo" --assignee "AstraZeneca" \
   --format markdown
 ```
@@ -86,26 +86,24 @@ python {skill_dir}/scripts/search_patents.py --mode drug \
 
 ```text
 python {skill_dir}/scripts/search_patents.py --mode company \
-  --assignee "{canonical company name}" \
+  --assignee "{canonical company name}" --assignee "{alias 1}" \
   --after 2021-01-01 \
-  [--country CN] --format markdown
-
-python {skill_dir}/scripts/search_patents.py --mode company \
-  --assignee "{alias 1}" --after 2021-01-01 \
   [--country CN] --format markdown
 ```
 
-- `--assignee` 每次接收一个公司名。查询词来自根索引公司表，包含 canonical company name 和全部中文名、英文名及 aliases；先去除完全重复值，再逐个运行脚本，最后按公开号合并去重并汇总，不得只查询用户输入的一个名称
-- `--after/--before` 限定申请日时间窗；脚本同时传给 GP 并在本地按申请日二次过滤
+- `--assignee` 可重复传入。查询词来自根索引公司表，包含 canonical company name 和全部中文名、英文名及 aliases；先去除完全重复值，一次运行即可逐个查询并按公开号合并，不得只查询用户输入的一个名称
+- FPO 降级也必须逐个别名/组件独立查询，并逐个执行申请人 × 药品别名；不得把全部别名用 `AND` 串联
+- 任一查询轴发生源错误时，不得把未报错轴的部分结果伪装成完整成功；显式 `--source gp` 必须非零退出，`auto` 才可整次降级 FPO
+- `--after/--before` 限定申请日（filing date）时间窗；脚本同时传给 GP 并在本地按完整日期二次过滤。最早优先权日仅在数据源明确提供时写入 `priority_date`，不可用时保留缺失值，不得将申请日称作最早优先权日
 - 时间窗默认最近 5 年（agent 可调整）
 
 ## Step 4: 执行脚本并处理输出
 
 1. 原样运行脚本，读取其 markdown/JSON 输出。
-2. 脚本已做：公开号去重、类型判定、类型分布/申请人分布聚合、排序（compound → combo → use → other，同组按申请日倒序）。
+2. 脚本已做：公开号去重、查询轴 provenance、类型判定、类型分布/申请人分布聚合、排序（compound → combo → use → other，同组按申请日倒序）。JSON 的 `query_axis_hits` 用于各轴审计。
 3. agent 的职责（不覆盖脚本字段）：
    - 剔除明显噪声（如仅"提及"该药名、实为其他分子的平台专利，可在 备注 标注"平台延伸，提及XX，非直接保护"）
-   - 备注列补充人工判断（如"核心物质族（2014 优先权）"）
+   - 备注列补充人工判断；只有来源明确提供或人工核验最早优先权日后，才可写如"核心物质族（2014 最早优先权）"
 
 ## Step 5: 写入 drug_page（仅 Mode A）
 
@@ -114,7 +112,8 @@ python {skill_dir}/scripts/search_patents.py --mode company \
 ```
 文件存在？
 ├── 是 → 读取内容，定位或新增 ## 药品专利 章节（位置在 ## 当前临床管线 之后，由 drug-spec.md 定义）
-│         章节内整表替换为本次脚本输出（含更新时间/来源/类型/申请人分布行）
+│         按公开号（publication identity）与现有表增量合并，不得整表替换：已有行保留人工备注等手工字段，同一公开号只更新本次来源明确提供的结构化字段
+│         FPO 降级结果覆盖较低，绝不能删除 GP/人工检索已有而本次未命中的行；任何新结果都只增不减
 │         不触碰其他章节
 └── 否 → 停止并报告："{drug_page} 不存在，无法写入专利章节"；不自行新建
 ```
@@ -147,7 +146,7 @@ drug-patent-search 完成：
 脚本 `--source auto` 自动降级 FPO（仅 US）。报告必须声明 CN 覆盖丢失；如需 CN 专利，待 GP 恢复后重跑或人工 web 检索补充。
 
 ### Q: 专利类型准确吗？
-类型由 CPC/IPC 分类号映射优先（FPO 授权详情页可得），缺失时按标题启发式；均为推断，最终以权利要求书为准。`compound` 判定最可靠（A61K47/68+C07K16/* 等结构码）。
+类型由可获得的 CPC/IPC 分类号映射优先（FPO 详情页、部分 GP XHR 结果可得），缺失时按标题启发式；GP 无分类号时报告为标题推断，不声称 CPC。均为推断，最终以权利要求书为准。
 
 ### Q: Mode A 结果里为什么有大量 combo？
 联用专利（该药 + 各靶点抑制剂）数量真实多于核心专利，属于正常现象，也是护城河形状的一部分（combo 多 = 公司正在铺联用保护面）。
