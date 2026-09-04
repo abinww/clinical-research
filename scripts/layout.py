@@ -45,24 +45,24 @@ class DrugLayout:
     drug_id: str
 
     @property
-    def directory(self) -> Path:
-        return self.research_dir / self.company_id / self.drug_id
+    def company_dir(self) -> Path:
+        return self.research_dir / self.company_id
 
     @property
     def profile(self) -> Path:
-        return self.directory / f"{self.drug_id}.md"
+        return self.company_dir / f"{self.drug_id}.md"
 
     @property
     def raw(self) -> Path:
-        return self.directory / "raw"
+        return self.company_dir / "raw"
 
     @property
     def summary(self) -> Path:
-        return self.directory / "summary"
+        return self.company_dir / "summary"
 
 
 def discover_drugs(research_dir: str | Path, rejected: list[Path] | None = None) -> list[DrugLayout]:
-    """Discover valid ``company/drug/drug.md`` trees under a research root."""
+    """Discover valid ``company/{drug_id}.md`` drug pages under a research root."""
     root = Path(research_dir).resolve()
     found: list[DrugLayout] = []
     if not root.is_dir():
@@ -87,26 +87,13 @@ def discover_drugs(research_dir: str | Path, rejected: list[Path] | None = None)
             ):
                 rejected.append(company)
             continue
-        for drug in sorted(company.iterdir(), key=lambda path: path.name.casefold()):
-            if drug.is_dir() and not is_contained(drug, root):
-                if rejected is not None:
-                    rejected.append(drug)
+        for profile in sorted(company.glob("*.md")):
+            if not profile.is_file() or not is_contained(profile, root):
                 continue
-            profile = drug / f"{drug.name}.md"
-            if (
-                _contained_directory(drug, root)
-                and not drug.name.startswith(".")
-                and is_valid_identifier(drug.name)
-                and _contained_file(profile, root)
-            ):
-                found.append(DrugLayout(root, company.name, drug.name))
-            elif (
-                rejected is not None
-                and drug.is_dir()
-                and not drug.name.startswith(".")
-                and (profile.is_file() or not is_valid_identifier(drug.name))
-            ):
-                rejected.append(drug)
+            drug_name = profile.name[:-3]
+            if not drug_name or not is_valid_identifier(drug_name):
+                continue
+            found.append(DrugLayout(root, company.name, drug_name))
     return found
 
 
@@ -121,10 +108,6 @@ def is_contained(path: str | Path, root: str | Path) -> bool:
 
 def _contained_directory(path: Path, root: Path) -> bool:
     return path.is_dir() and is_contained(path, root)
-
-
-def _contained_file(path: Path, root: Path) -> bool:
-    return path.is_file() and is_contained(path, root)
 
 
 def persistent_path(path: str | Path, research_dir: str | Path) -> str:

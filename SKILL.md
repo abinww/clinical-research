@@ -28,7 +28,7 @@ description: |
 ```text
 {research_dir}/
 ├── index.md
-├── {company_id}/{drug_id}/
+├── {company_id}/
 │   ├── {drug_id}.md
 │   ├── raw/{drug_id}@{source_label}.md
 │   └── summary/{drug_id}@{source_label}.md
@@ -37,25 +37,26 @@ description: |
 └── .temp/plans/
 ```
 
-- `research_dir` 就是 Obsidian vault 根目录；公司目录是其直接子目录，初始化时不创建，首次创建药品时才生成。
+- `research_dir` 就是 Obsidian vault 根目录；公司目录是其直接子目录，初始化时不创建，首次创建药品时才生成。药品页 `{drug_id}.md` 直接位于公司目录根；`raw/`、`summary/` 是公司级共享目录，跨药品按 `{drug_id}@` 文件名前缀区分归属。
 - 根 `index.md` 是实体定位第一入口，记录规范 ID、别名和路径。agent 可增量维护 managed index markers 内的数据，必须保留 markers 外的用户内容；索引或扫描并非只读。
 - 扫描根目录必须排除 `indication/`、`attachments/`、`.temp/`、所有隐藏目录及其他已知基础设施目录。
 - 身份对象及路径以 `drug-identity/SKILL.md` 为权威契约；标识不唯一时询问用户，不得猜测或迁移既有归档。
 - summary 的结构、命名、来源身份和链接以 `schema/summary-spec.md` 为权威契约。
+- 用户提交的 `<= 10 MiB` 来源 PDF 存入根 `attachments/{drug_id}@{source_label}.pdf`，raw 正文只写嵌入引用；`> 10 MiB` 维持文本提取进 raw。
 - summary 是否可归档以 `clinical-indexer/SKILL.md` 的完整资格门禁为准，不得用简化状态判断替代。
 
 ## 不变量与写边界
 
 - **Index-first**：先查根 `index.md`，明确处理别名和歧义。
 - **Source-first**：raw 保留来源原文，不由模型改写；summary 是同一来源的结构化摘要。
-- 每个 canonical source 在单个药品目录中严格对应一对同名 raw/summary；不得按适应症复制。跨药品允许复用同一来源。
+- 每个 canonical source 在公司级 `raw/`、`summary/` 中严格对应一对同名 `{drug_id}@{source_label}.md`；不得按适应症复制。跨药品允许复用同一来源。
 - 单份 summary 可覆盖多个规范 `indication_id`；药品页、适应症页和根索引中的 managed blocks 由 indexer 增量维护，并保留人工内容。
 - 每个药品只有一个 `{drug_id}.md`。临床注册查询写入该页；独立 `data-search` 只返回 plan，`drug-build` 才把 plan 持久化到 `.temp/plans/`。
 
 ## 工作流
 
 1. 检查 `{clinical_research_dir}/config.yaml`。缺失或无效时，先按下列格式报告 `missing/invalid`，再停止路由并执行 `initial.md`；初始化完成前禁止读取用户 URL/PDF、提取内容或创建研究数据。
-2. 配置有效时读取根 `index.md`。请求涉及具体药品时解析 `company_id`、`drug_id` 和目标目录；不能唯一确定时询问用户。
+2. 配置有效时读取根 `index.md`。请求涉及具体药品时解析 `company_id`、`drug_id` 和目标药品页；不能唯一确定时询问用户。
 3. 在继续路由前输出：
 
 ```text
@@ -65,7 +66,7 @@ PREFLIGHT:
 - index.md: found / missing / unresolved
 - company_id: <canonical id> / unresolved / not-applicable
 - drug_id: <canonical id> / unresolved / not-applicable
-- target_drug_dir: <absolute path> / unresolved / not-applicable
+- drug_page: <absolute path> / unresolved / not-applicable
 - selected_subskill:
 - reason:
 ```

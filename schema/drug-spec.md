@@ -1,6 +1,6 @@
 # 药品页格式规范 (2.0)
 
-本文件定义药品页 `{research_dir}/{company_id}/{drug_id}/{drug_id}.md`。`research_dir` 本身是 Obsidian vault 根目录；药品页汇总同目录下已审核的临床摘要，并维护官方注册管线和药品专利。
+本文件定义药品页 `{research_dir}/{company_id}/{drug_id}.md`。`research_dir` 本身是 Obsidian vault 根目录；药品页汇总公司级 `summary/` 中同药品（`{drug_id}@` 前缀）已审核的临床摘要，并维护官方注册管线和药品专利。
 
 ## 目录与边界
 
@@ -10,17 +10,17 @@
   indication/
     {indication_id}.md
   {company_id}/
-    {drug_id}/
-      {drug_id}.md
-      raw/
-        {raw_file}.md
-      summary/
-        {drug_id}@{source_label}.md
+    {drug_id}.md
+    raw/
+      {drug_id}@{source_label}.md
+    summary/
+      {drug_id}@{source_label}.md
 ```
 
+- 药品页 `{drug_id}.md` 直接位于公司目录根；`raw/`、`summary/` 是公司级共享目录，跨药品按 `{drug_id}@` 文件名前缀区分归属。
 - 一个来源对应一个 `raw` 文件和一个 `summary` 文件，不得将多个来源合并进同一文件，也不得从一个来源拆出多个摘要。
 - 药品页的 `基本信息` 可在建档时填写，但已有事实必须可追溯，不得依靠模型记忆补全。
-- `临床数据汇总` 和 `关键里程碑` 只能来自同药品 `summary/` 中通过一致性审核的摘要，不得直接来自 `raw/`、外部网页、PDF 或模型记忆。
+- `临床数据汇总` 和 `关键里程碑` 只能来自本药品在公司 `summary/` 中通过一致性审核的摘要（文件名以 `{drug_id}@` 前缀），不得直接来自 `raw/`、外部网页、PDF 或模型记忆。
 - `当前临床管线` 可直接使用 ClinicalTrials.gov 官方 API 或 chinadrugtrials.org.cn 官方注册数据，但注册信息不得用于补充临床疗效或安全性。
 - `药品专利` 可直接使用 Google Patents 或 FreePatentsOnline 检索结果，但专利信息不得用于补充临床疗效或安全性。
 - 摘要缺失、审核章节缺失、`verification` 不是 `passed`、`verification_fail_count` 不是 `0`、`verification_coverage` 不是 `complete`，或审核含 `FAIL` 时，不得将其数据写入药品页。
@@ -28,7 +28,7 @@
 
 ## 文件与身份
 
-- 文件路径固定为 `{research_dir}/{company_id}/{drug_id}/{drug_id}.md`，文件名必须与 `drug_id` 一致；不存在中间 `company/` 目录。
+- 文件路径固定为 `{research_dir}/{company_id}/{drug_id}.md`，文件名必须与 `drug_id` 一致；不存在中间 `company/` 或 `{drug_id}/` 目录。
 - `drug_id` 优先级：开发代码、短名称或缩写、中文通用名、英文通用名。
 - `drug_id` 中空格和斜杠替换为 `_`，括号移除；优先使用简洁、稳定、易读的标识。
 - 同一药品只有一个规范 `drug_id`；商品名、通用名和旧代码写入 `drug_aliases`。
@@ -109,7 +109,7 @@ updated: YYYY-MM-DD
 ```markdown
 ### {适应症名称}
 
-<!-- source_identity: {company_id}/{drug_id}/summary/{drug_id}@{source_label}.md -->
+<!-- source_identity: {company_id}/summary/{drug_id}@{source_label}.md -->
 
 > {source_label}
 
@@ -119,14 +119,14 @@ updated: YYYY-MM-DD
 | ORR | ... | ... | ... |
 | >=3 TRAE | ... | ... | ... |
 
-> 来源: [ABC123@ASCO2026.md](summary/ABC123@ASCO2026.md)
+> 来源: [ABC123@ASCO2026.md](ABC123@ASCO2026.md)
 ```
 
 ### 表格规则
 
 - 直接嵌入摘要中该适应症的有效性主表，保持指标为行、cohort 为列，不转置、不重新计算数值。
 - 药品页只嵌入含有效性数据的主表；仅安全性或亚组分表通过摘要链接查看。
-- 表格上方只写 `> {source_label}`；表格下方使用相对药品页的兄弟目录链接 `summary/{file}.md`。
+- 表格上方只写 `> {source_label}`；表格下方使用相对药品页的同目录链接 `{file}.md`（药品页与 `summary/` 同在公司目录根，摘要文件名为 `{drug_id}@{source_label}.md`）。
 - 不同 `trial_name` 分成不同表格。
 - 同一 `trial_name` 的不同数据成熟度可合成一表：同一 cohort 保持同列，不同披露点新增指标行并在指标名注明标签，如 `cORR (ASCO 2026)`。
 - 合并表的来源行列出全部摘要链接，以 ` | ` 分隔。一个摘要可同时为多个适应症章节提供各自的数据。
@@ -213,13 +213,13 @@ updated: YYYY-MM-DD
 
 ## 验证清单
 
-- [ ] 路径为 `{research_dir}/{company_id}/{drug_id}/{drug_id}.md`，文件名与 `drug_id` 一致，且没有 `company/` 中间层。
+- [ ] 路径为 `{research_dir}/{company_id}/{drug_id}.md`，文件名与 `drug_id` 一致，且没有 `company/` 或 `{drug_id}/` 中间层。
 - [ ] `company_id` 和公司展示名可在根 `index.md` 找到，未建立 `company.md` 或局部别名表。
 - [ ] frontmatter 必需字段完整，`target` 使用最简形式。
-- [ ] 临床数据和里程碑只来自审核通过且 `FAIL=0` 的同药品摘要。
+- [ ] 临床数据和里程碑只来自审核通过且 `FAIL=0` 的本药品摘要（文件名 `{drug_id}@` 前缀）。
 - [ ] 临床数据按适应症分组，多适应症摘要的数据未串组。
 - [ ] 不同试验分表；同试验不同成熟度按规则合并且保留全部来源。
-- [ ] 药品页摘要链接使用兄弟路径 `summary/{file}.md`。
+- [ ] 药品页摘要链接使用同目录 `{file}.md`（如 `ABC123@ASCO2026.md`）。
 - [ ] 管线表保留官方试验链接、更新时间、完整方案和开展国家。
 - [ ] 专利类型、排序、来源和排除规则均满足本规范。
 - [ ] 表格无空单元格；缺失值使用 `—`。

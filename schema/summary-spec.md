@@ -5,13 +5,19 @@
 ## 一对一来源模型
 
 ```text
-{research_dir}/{company_id}/{drug_id}/
+{research_dir}/{company_id}/
+  {drug_id}.md
   raw/{drug_id}@{source_label}.md
   summary/{drug_id}@{source_label}.md
 ```
 
+- 药品页 `{drug_id}.md` 直接位于公司目录根；`raw/`、`summary/` 是公司级共享目录，跨药品按文件名前缀 `{drug_id}@` 区分归属。
+
 - 一个来源生成一个 `raw` 文件，再生成一个 `summary` 文件：`1 source -> 1 raw -> 1 summary`。
 - 不得将多个网页、PDF、会议摘要或新闻稿合并为一个 raw 或 summary。
+- 来源为 PDF 时按大小分流，两种分支都仍保持一个 raw 对应一个 summary：
+  - `<= 10 MiB`（用户提交的 PDF）：PDF 复制到根 `attachments/{drug_id}@{source_label}.pdf`（与配对 raw/summary 同名），raw 正文只写嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`，不保存提取文本（避免乱码污染）；`source` 写附件绝对 POSIX 路径。summary 仍基于对该 PDF 的提取生成，审核证据以附件 PDF 为准。
+  - `> 10 MiB`：维持文本提取，raw 正文保存提取文本，`source` 写原 PDF 的 resolved absolute POSIX path。
 - extractor 永远只创建新文件，不得覆盖既有 raw 或 summary。它可创建 orchestrator 指定的 replacement staging 路径，但不得 commit 或删除。
 - 替换只能由 multi-extractor 执行，且必须在 `{research_dir}/.temp/replacements/{run-id}` 中先提取、结构校验并由独立 verifier 通过。commit 前逐字节备份准确旧 pair、全部 managed index documents（药品页、涉及的适应症页、根索引）及受影响附件并校验哈希；附件在 manifest 中记录复用/新增/移除，绝不先删除。正式安装使用可恢复的原子 replace 和持久化事务状态，任一步失败回滚全部已改文件并校验旧状态。
 - 实质不同的来源必须使用不同 `source_label`。
@@ -35,8 +41,8 @@
 raw frontmatter 的 `source` 是来源去重、替换和工作流比较使用的持久来源身份：
 
 - URL 来源保存用户准确提供的 URL；若工作流明确采用重定向后的 canonical final URL，则保存该准确 final URL。不得 percent decode，也不得为比较而改写大小写、查询参数、尾部斜杠或编码形式；所有工作流比较 raw 中持久化的同一个准确字符串。
-- 本地 PDF 来源只保存 `Path.resolve(strict=True).as_posix()` 得到的绝对 POSIX 路径，例如 `C:/reports/trial.pdf`；路径必须实际存在，不得只保存文件名、相对路径、反斜杠路径或另造路径标识。
-- raw 与 summary 的配对身份由同一 `{drug_id}@{source_label}` 文件名确定；准确重复键是当前药品树中的 `(company_id, drug_id, source)`。相同 source 在另一药品树属于允许的跨药复用，不阻塞创建。近似来源只能提示人工判断。
+- 本地 PDF 来源：`<= 10 MiB` 时保存复制后的附件绝对路径 `{research_dir}/attachments/{drug_id}@{source_label}.pdf`（该附件必须实际存在）；`> 10 MiB` 时保存原 PDF 的 `Path.resolve(strict=True).as_posix()` 得到的绝对 POSIX 路径，例如 `C:/reports/trial.pdf`。两者都不得只保存文件名、相对路径、反斜杠路径或另造路径标识。
+- raw 与 summary 的配对身份由同一 `{drug_id}@{source_label}` 文件名确定；准确重复键是当前公司布局中的 `(company_id, drug_id, source)`。相同 source 在另一药品下属于允许的跨药复用，不阻塞创建。近似来源只能提示人工判断。
 
 ## Frontmatter
 
@@ -136,6 +142,7 @@ verification_coverage: complete
 
 - 正文必须按 `indications` 顺序分组，每个 `## [{indication_id}] {indication}` 与一个对象一一对应；稳定 ID 是机器映射键。
 - 来源链接紧随一级标题且全文件只写一次，必须采用 `[label](../raw/file.md)`，其中 label 是可读来源名。
+- 来源为 `<= 10 MiB` 的附件化 PDF 时，raw 正文只是嵌入引用；summary 的来源链接仍指向该 raw，审核证据从附件 PDF 读取。
 - 每个适应症独立包含核心数据和试验设计；不得把多适应症数值混入同一张无明确分组的表。
 - 没有临床图片时省略 `临床数据图片`。`专家点评` 必须明确为分析性内容，不得冒充来源事实。
 - `数据一致性审核` 位于整个文件末尾，覆盖所有适应症。
@@ -239,9 +246,10 @@ verification_coverage: complete
 
 ## 验证清单
 
-- [ ] 路径和文件名为 `{research_dir}/{company_id}/{drug_id}/summary/{drug_id}@{source_label}.md`，且没有 `company/` 中间层。
+- [ ] 路径和文件名为 `{research_dir}/{company_id}/summary/{drug_id}@{source_label}.md`，药品页为 `{research_dir}/{company_id}/{drug_id}.md`，且没有 `company/` 中间层。
 - [ ] 此摘要只对应一个 raw，且使用规范来源链接 `> 来源原文: [label](../raw/file.md)`。
-- [ ] raw `source` 为准确 URL（不 percent decode）或 PDF 的 resolved absolute POSIX path，且去重与替换比较使用同一个持久值。
+- [ ] raw `source` 为准确 URL（不 percent decode），或 PDF 的附件绝对路径（`<= 10 MiB`）/ 原 PDF resolved absolute POSIX path（`> 10 MiB`），且去重与替换比较使用同一个持久值。
+- [ ] PDF 来源 `<= 10 MiB` 时：`attachments/{drug_id}@{source_label}.pdf` 存在且内容与 raw `source` 一致，raw 正文为嵌入引用；PDF 来源 `> 10 MiB` 时：raw 正文保存提取文本。
 - [ ] `indications` 是至少含一个对象的列表，正文以 `## [{indication_id}] {indication}` 分组，trial 字段遵守继承规则。
 - [ ] 未使用单数适应症字段，也未在文件名中编码适应症。
 - [ ] 每个适应症的主表以指标为行、cohort 为列，第一条数据行为 `N`。

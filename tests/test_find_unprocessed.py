@@ -10,18 +10,18 @@ class FindUnprocessedTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             for company, drug in (("c1", "d1"), ("c2", "d2")):
-                directory = root / company / drug
-                (directory / "raw").mkdir(parents=True)
-                (directory / "summary").mkdir()
-                (directory / f"{drug}.md").write_text("profile", encoding="utf-8")
-                (directory / "raw" / "source.md").write_text("raw", encoding="utf-8")
-            (root / "c1" / "d1" / "summary" / "source.md").write_text(
-                "> 来源原文: [source](../raw/source.md)\n", encoding="utf-8"
+                company_dir = root / company
+                (company_dir / "raw").mkdir(parents=True)
+                (company_dir / "summary").mkdir()
+                (company_dir / f"{drug}.md").write_text("profile", encoding="utf-8")
+                (company_dir / "raw" / f"{drug}@source.md").write_text("raw", encoding="utf-8")
+            (root / "c1" / "summary" / "d1@source.md").write_text(
+                "> 来源原文: [source](../raw/d1@source.md)\n", encoding="utf-8"
             )
 
-            self.assertEqual(find_unprocessed(root), ["c2/d2/raw/source.md"])
+            self.assertEqual(find_unprocessed(root), ["c2/raw/d2@source.md"])
             self.assertEqual(find_unprocessed(root, company_id="c1"), [])
-            self.assertEqual(find_unprocessed(root, drug_id="d2"), ["c2/d2/raw/source.md"])
+            self.assertEqual(find_unprocessed(root, drug_id="d2"), ["c2/raw/d2@source.md"])
 
 
 if __name__ == "__main__":

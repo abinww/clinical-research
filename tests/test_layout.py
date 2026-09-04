@@ -16,10 +16,11 @@ class LayoutTests(unittest.TestCase):
     def test_discovers_only_complete_company_drug_layouts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            valid = root / "企业甲" / "药物一"
-            valid.mkdir(parents=True)
-            (valid / "药物一.md").write_text("# 药物一", encoding="utf-8")
-            (root / "企业甲" / "incomplete").mkdir()
+            company = root / "企业甲"
+            company.mkdir(parents=True)
+            (company / "药物一.md").write_text("# 药物一", encoding="utf-8")
+            (company / "raw").mkdir()
+            (company / "summary").mkdir()
             excluded = root / "attachments" / "fake"
             excluded.mkdir(parents=True)
             (excluded / "fake.md").write_text("# fake", encoding="utf-8")
@@ -36,7 +37,7 @@ class LayoutTests(unittest.TestCase):
                 candidate = root / role / "fake"
                 candidate.mkdir(parents=True)
                 (candidate / "fake.md").write_text("profile", encoding="utf-8")
-            valid = root / "company" / "drug"
+            valid = root / "company"
             valid.mkdir(parents=True)
             (valid / "drug.md").write_text("profile", encoding="utf-8")
 
@@ -57,7 +58,7 @@ class LayoutTests(unittest.TestCase):
     def test_reports_invalid_complete_drug_tree(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            invalid = root / "Company@Bad" / "Drug"
+            invalid = root / "Company@Bad"
             invalid.mkdir(parents=True)
             (invalid / "Drug.md").write_text("profile", encoding="utf-8")
             rejected = []

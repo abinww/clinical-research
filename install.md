@@ -173,7 +173,7 @@ python --version
 {research_dir}/.temp/plans/
 ```
 
-根 `index.md` 是公司/药品别名和路径的第一查询入口，由 agent 生成且允许用户编辑。初始化不创建公司目录；创建首个药品时，才在 vault 根目录直接创建 `{company_id}/{drug_id}/`。2.0 不创建 `company/` 根容器或 `company.md`，也不创建全局 `raw/`、`summary/`、`drug/`、`trials/` 或其他内容根目录。
+根 `index.md` 是公司/药品别名和路径的第一查询入口，由 agent 生成且允许用户编辑。初始化不创建公司目录；创建首个药品时，才在 vault 根目录直接创建 `{company_id}/`（含药品页 `{drug_id}.md` 和公司级 `raw/`、`summary/`）。2.0 不创建 `company/` 根容器或 `company.md`，也不创建全局 `raw/`、`summary/`、`drug/`、`trials/` 或其他内容根目录。
 
 如果发现旧版多字段配置或 v1 数据目录，不要转换、移动或合并。说明 2.0 不提供 v1 迁移，并请用户确认一个新的 2.0 研究目录。
 

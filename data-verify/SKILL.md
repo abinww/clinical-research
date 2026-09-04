@@ -22,13 +22,13 @@ description: |
 
 - 只允许修改 YAML 的 `verification`、`verification_fail_count`、`verification_coverage`，以及文件末尾的规范 `## 数据一致性审核` 章节。
 - 不得修改身份字段、`indications`、临床正文、图片、试验设计或专家点评；不审核专家点评观点。
-- 只以 raw 文本和可读取的实际附件为证据，不用常识、外部知识或联网内容补证。
+- 只以 raw 文本和可读取的实际附件为证据，不用常识、外部知识或联网内容补证。raw 正文为 PDF 嵌入引用时，证据取自对应的 `attachments/{drug_id}@{source_label}.pdf` 附件。
 - 每个临床数值、关键试验事实和分组都必须有审核行，并覆盖全部适应症。
 
 ## 工作流
 
 1. **安全定位来源。** 只接受全文件唯一的规范相对 Markdown 来源链接。对 URL 编码文件名安全解码，以 summary 目录为基准解析；拒绝绝对路径、wikilink、反斜杠、嵌套 raw 子目录、`..` 越界和多个来源行。
-2. **校验配对。** 若提供 `raw_dir`，结果必须是其直接子文件；否则从 `{research_dir}/{company_id}/{drug_id}/summary/` 推导相邻 `raw/`。raw 与 summary 文件名必须完全相同并匹配规范命名；summary frontmatter 的 `drug_id`、`source_label` 必须与文件名一致，raw frontmatter 只校验 summary-spec 定义的来源字段。raw 必须存在且可读；失败时不搜索同名文件或旧目录。
+2. **校验配对。** 若提供 `raw_dir`，结果必须是其直接子文件；否则从 `{research_dir}/{company_id}/summary/` 推导相邻公司级 `raw/`。raw 与 summary 文件名必须完全相同并匹配规范命名；summary frontmatter 的 `drug_id`、`source_label` 必须与文件名一致，raw frontmatter 只校验 summary-spec 定义的来源字段。raw 必须存在且可读；失败时不搜索同名文件或旧目录。raw 正文为 `![[attachments/{drug_id}@{source_label}.pdf]]` 嵌入引用（`<= 10 MiB` 附件化 PDF）时，从对应附件 `attachments/{drug_id}@{source_label}.pdf` 读取证据。
 3. **确定范围。** 读取 summary-spec 的数据一致性规则和 `indications`。数组缺失、为空、重复，或与正文分节不一一对应时记 `FAIL`。逐适应症覆盖样本量/分析集、疗效、安全性、统计量、试验阶段与设计、cohort、剂量、组别、治疗线、联合方案、日期，以及正文或图注声称的数据事实。
 4. **逐项核对。** 按以下精确定义记录每一项，并在多适应症来源中明确 `indication_id`：
 

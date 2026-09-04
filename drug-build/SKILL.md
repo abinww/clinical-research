@@ -27,7 +27,7 @@ plan 文件名格式为：
 "{research_dir}/.temp/plans/search_plan_{drug_id}_{date}.md"
 ```
 
-canonical source 保持提取体系的准确值：URL 不改写大小写、查询参数、尾斜杠或编码；本地 PDF 使用 resolved absolute POSIX path。plan 内按 canonical source 准确字符串合并；库内判重只限当前 `drug_id`，其他药品可合法复用同一来源。
+canonical source 保持提取体系的准确值：URL 不改写大小写、查询参数、尾斜杠或编码；本地 PDF 使用持久化身份（`<= 10 MiB` 附件化后为附件绝对路径 `attachments/{drug_id}@{source_label}.pdf`，`> 10 MiB` 为 resolved absolute POSIX path）。plan 内按 canonical source 准确字符串合并；库内判重只限当前 `drug_id`，其他药品可合法复用同一来源。
 
 开始本次建库前，先扫描 `.temp/plans/search_plan_{drug_id}_*.md`：恰有一个未完成 plan 时继续使用其绝对路径；多个匹配时停止并请用户选择；没有匹配时才创建当天路径。下文 `{plan_path}` 指最终选定的绝对路径。
 
@@ -54,10 +54,10 @@ python "{clinical_research_dir}/drug-build/scripts/check_plan_progress.py" --con
 | `未审核` 或审核 pending/failed/incomplete | `pending/failed audit` | raw/summary 唯一，但未通过完整审核门禁 | `data-verify` 逐项接收唯一 summary 绝对路径；通过后立即交 `clinical-indexer` 部分模式，未通过则保留 plan | 同动作精确重试一次；通过后部分索引 |
 | `已验证未索引` | `verified-unindexed` | 审核通过，但药品页、任一应建适应症页或根索引有缺口 | `clinical-indexer` 接收明确 summary 绝对路径列表执行部分模式；不得扩展扫描 | 同动作精确重试一次 |
 | `已完成` | `fully indexed` | 审核和全部索引维度完整 | 跳过 | 不重试，完成 |
-| `来源对应多个raw`、`一个raw对应多个summary`、`summary文件名不匹配`，或字段/路径冲突、错误索引引用、目标不唯一 | `ambiguity/manual` | 仅指当前药品树内歧义 | 不自动恢复；保留 plan，报告人工处理 | 不重试 |
+| `来源对应多个raw`、`一个raw对应多个summary`、`summary文件名不匹配`，或字段/路径冲突、错误索引引用、目标不唯一 | `ambiguity/manual` | 仅指当前公司级布局内歧义 | 不自动恢复；保留 plan，报告人工处理 | 不重试 |
 | raw frontmatter、summary 来源链接或 managed 索引结构损坏 | `数据完整性错误` | 持久数据结构损坏 | 停止自动恢复；报告具体文件并保留 plan，禁止按“未提取”重抓 | 不重试 |
 
-命令已传入 `company_id/drug_id`，因此 `来源对应多个raw` 只表示当前药品树异常。
+命令已传入 `company_id/drug_id`，因此 `来源对应多个raw` 只表示当前公司级布局异常。
 
 ## 流程
 

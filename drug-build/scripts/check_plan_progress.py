@@ -2,8 +2,8 @@
 """检查 drug-build plan 表的完成进度（纯数据工具，不参与流程控制）。
 
 对 plan 表每一行的 URL，按完整状态判断：
-1. 在指定药品（或诊断模式下全库）的 raw/ 中按 frontmatter source 定位唯一 raw
-2. 在该药品 summary/ 中按规范相对 Markdown 链接定位唯一 summary
+1. 在指定药品（或诊断模式下全库）的公司 raw/ 中按 frontmatter source 定位唯一 raw
+2. 在公司 summary/ 中按规范相对 Markdown 链接定位唯一 summary
 3. 对应 summary 是否通过完整审核门禁
 4. 药品页、全部应建适应症页和根索引是否完整
 
@@ -91,16 +91,19 @@ def find_raws_for_source(
 ) -> list[Path]:
     """Find every nested drug raw whose semantic source identity is *source*."""
     matches = []
-    for drug in discover_drugs(research_dir):
-        if company_id is not None and drug.company_id != company_id:
+    root = Path(research_dir).resolve()
+    company_dirs = sorted({drug.company_dir for drug in discover_drugs(root)})
+    for company_dir in company_dirs:
+        if company_id is not None and company_dir.name != company_id:
             continue
-        if drug_id is not None and drug.drug_id != drug_id:
+        raw_dir = company_dir / "raw"
+        if not raw_dir.is_dir():
             continue
-        if not drug.raw.is_dir():
-            continue
-        for path in sorted(drug.raw.glob("*.md")):
+        for path in sorted(raw_dir.glob("*.md")):
+            if drug_id is not None and not path.name.startswith(f"{drug_id}@"):
+                continue
             try:
-                if not is_contained(path, research_dir):
+                if not is_contained(path, root):
                     continue
                 if frontmatter_value(read_frontmatter(path.read_text(encoding="utf-8-sig")), "source") == source:
                     matches.append(path)
@@ -142,7 +145,7 @@ def _managed_region(text: str, name: str) -> str | None:
     return text[start:finish] if start < finish else None
 
 
-def _contains_managed_wikilink(path: Path, table: str, target: str, alias: str) -> bool:
+def _contains_managed_wikilink(path: Path, table: str, target: str) -> bool:
     if not path.is_file():
         return False
     try:
@@ -161,20 +164,21 @@ def _contains_managed_wikilink(path: Path, table: str, target: str, alias: str) 
         or any(len(row) != len(rows[0]) for row in rows)
     ):
         return False
-    plain = f"[[{target}|{alias}]]"
-    escaped = f"[[{target}\\|{alias}]]"
+    plain = f"[[{target}|"
+    escaped = f"[[{target}\\|"
     return sum((plain in line) + (escaped in line) for line in nonempty[2:]) == 1
 
 
 def _indexed_for_summary(research_dir: Path, summary: Path, summary_text: str) -> bool:
     identity = persistent_path(summary, research_dir)
-    drug_dir = summary.parent.parent
-    drug_page = drug_dir / f"{drug_dir.name}.md"
+    company_dir = summary.parent.parent
+    drug_id = summary.name.split("@", 1)[0]
+    drug_page = company_dir / f"{drug_id}.md"
     index = research_dir / "index.md"
     if not _contains_source_identity(drug_page, identity, research_dir):
         return False
     drug_target = persistent_path(drug_page, research_dir)
-    if not _contains_managed_wikilink(index, "drugs", drug_target, drug_dir.name):
+    if not _contains_managed_wikilink(index, "drugs", drug_target):
         return False
     try:
         indications = summary_indications(summary_text)
@@ -188,9 +192,7 @@ def _indexed_for_summary(research_dir: Path, summary: Path, summary_text: str) -
         page = research_dir / "indication" / f"{indication_id}.md"
         if not _contains_source_identity(page, identity, research_dir):
             return False
-        if not _contains_managed_wikilink(
-            index, "indications", f"indication/{indication_id}.md", indication_id
-        ):
+        if not _contains_managed_wikilink(index, "indications", f"indication/{indication_id}.md"):
             return False
     return True
 

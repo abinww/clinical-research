@@ -16,12 +16,12 @@ from scripts.scan_sources import (
 )
 
 
-def make_drug(root: Path, company: str, drug: str) -> Path:
-    directory = root / company / drug
-    (directory / "raw").mkdir(parents=True)
-    (directory / "summary").mkdir()
-    (directory / f"{drug}.md").write_text(f"# {drug}\n", encoding="utf-8")
-    return directory
+def make_company(root: Path, company: str, drug: str) -> Path:
+    company_dir = root / company
+    (company_dir / "raw").mkdir(parents=True)
+    (company_dir / "summary").mkdir()
+    (company_dir / f"{drug}.md").write_text(f"# {drug}\n", encoding="utf-8")
+    return company_dir
 
 
 class ScanSourcesTests(unittest.TestCase):
@@ -41,10 +41,10 @@ class ScanSourcesTests(unittest.TestCase):
     def test_processed_and_pending_use_distinct_root_relative_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "研究"
-            first = make_drug(root, "公司甲", "药甲")
-            second = make_drug(root, "公司乙", "药乙")
-            for drug in (first, second):
-                (drug / "raw" / "same.md").write_text("source: https://example.test\n", encoding="utf-8-sig")
+            first = make_company(root, "公司甲", "药甲")
+            second = make_company(root, "公司乙", "药乙")
+            for company in (first, second):
+                (company / "raw" / "same.md").write_text("source: https://example.test\n", encoding="utf-8-sig")
             (first / "summary" / "same.md").write_text(
                 "# 摘要\n> 来源原文: [same](../raw/same.md)\n", encoding="utf-8-sig"
             )
@@ -52,41 +52,41 @@ class ScanSourcesTests(unittest.TestCase):
             raw, processed = research_sources(root)
             identities = {identity for _, identity in raw}
 
-            self.assertEqual(identities, {"公司甲/药甲/raw/same.md", "公司乙/药乙/raw/same.md"})
-            self.assertEqual(processed, {"公司甲/药甲/raw/same.md": "公司甲/药甲/summary/same.md"})
-            self.assertEqual(identities - processed.keys(), {"公司乙/药乙/raw/same.md"})
+            self.assertEqual(identities, {"公司甲/raw/same.md", "公司乙/raw/same.md"})
+            self.assertEqual(processed, {"公司甲/raw/same.md": "公司甲/summary/same.md"})
+            self.assertEqual(identities - processed.keys(), {"公司乙/raw/same.md"})
 
     def test_direct_directory_scanners_use_drug_relative_posix_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
-            drug = make_drug(Path(temporary), "company", "drug")
-            raw = drug / "raw" / "源.md"
+            company = make_company(Path(temporary), "company", "drug")
+            raw = company / "raw" / "源.md"
             raw.write_text("text", encoding="utf-8")
-            summary = drug / "summary" / "源.md"
+            summary = company / "summary" / "源.md"
             summary.write_text("> 来源原文: [源](../raw/源.md)\n", encoding="utf-8")
 
-            self.assertEqual(raw_sources(drug / "raw"), [(raw, "raw/源.md")])
-            self.assertEqual(processed_sources(drug / "summary"), {"raw/源.md"})
+            self.assertEqual(raw_sources(company / "raw"), [(raw, "raw/源.md")])
+            self.assertEqual(processed_sources(company / "summary"), {"raw/源.md"})
 
     def test_mismatched_summary_filename_remains_pending(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            drug = make_drug(root, "company", "drug")
-            (drug / "raw" / "source.md").write_text("raw", encoding="utf-8")
-            (drug / "summary" / "different.md").write_text(
+            company = make_company(root, "company", "drug")
+            (company / "raw" / "source.md").write_text("raw", encoding="utf-8")
+            (company / "summary" / "different.md").write_text(
                 "> 来源原文: [source](../raw/source.md)\n", encoding="utf-8"
             )
 
             raw, processed = research_sources(root)
-            self.assertEqual([identity for _, identity in raw], ["company/drug/raw/source.md"])
+            self.assertEqual([identity for _, identity in raw], ["company/raw/source.md"])
             self.assertEqual(processed, {})
 
     def test_reports_mismatch_and_duplicate_separately(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            drug = make_drug(root, "company", "drug")
-            (drug / "raw" / "source.md").write_text("raw", encoding="utf-8")
+            company = make_company(root, "company", "drug")
+            (company / "raw" / "source.md").write_text("raw", encoding="utf-8")
             for name in ("different.md", "other.md"):
-                (drug / "summary" / name).write_text(
+                (company / "summary" / name).write_text(
                     "> 来源原文: [source](../raw/source.md)\n", encoding="utf-8"
                 )
             anomalies: list[ScanAnomaly] = []
@@ -132,7 +132,7 @@ class ScanSourcesTests(unittest.TestCase):
     def test_semantic_scan_excludes_infrastructure_and_index(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            included = root / "公司" / "药" / "药.md"
+            included = root / "公司" / "药.md"
             included.parent.mkdir(parents=True)
             included.write_text("content", encoding="utf-8")
             excluded = [

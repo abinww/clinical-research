@@ -51,10 +51,9 @@ git clone https://github.com/abinww/clinical-research.git
 ~/research/
 ├── index.md                         # 第一查询入口：公司/药品 ID、别名与路径
 ├── {company_id}/
-│   └── {drug_id}/
-│       ├── {drug_id}.md
-│       ├── raw/{drug_id}@{source_label}.md
-│       └── summary/{drug_id}@{source_label}.md
+│   ├── {drug_id}.md
+│   ├── raw/{drug_id}@{source_label}.md
+│   └── summary/{drug_id}@{source_label}.md
 ├── indication/{indication_id}.md
 ├── attachments/
 └── .temp/plans/
@@ -65,13 +64,14 @@ git clone https://github.com/abinww/clinical-research.git
 - `index.md` 是任何实体定位的第一查询入口，由 Agent 生成和维护，也允许用户编辑。Agent 会写入明确的 managed index markers 所界定的数据块；这些块不是只读内容，更新时增量维护，markers 外的用户内容必须保留。
 - 根索引包含公司和药品别名。歧义别名必须明确区分，例如 MSD 指向 Merck & Co./默沙东，Merck KGaA/德国默克在美国和加拿大使用 EMD 品牌，不得合并两者。
 - `research_dir` 本身是 Obsidian vault 根目录，不存在中间 `company/` 容器。
-- 初始化只创建 `indication/`、`attachments/`、`.temp/plans/` 和 `index.md`。创建首个药品时才在 vault 根目录直接创建对应公司和药品目录。
+- 初始化只创建 `indication/`、`attachments/`、`.temp/plans/` 和 `index.md`。创建首个药品时才在 vault 根目录直接创建公司目录及药品页 `{drug_id}.md`。
+- 药品页 `{drug_id}.md` 直接位于公司目录根；`raw/`、`summary/` 是公司级共享目录，跨药品按 `{drug_id}@` 文件名前缀区分归属。
 - `company_id` 和公司目录使用常见短名，可以包含中文；中日公司通常用常见中文短名，西方公司通常用常见英文短名。名称必须 Windows-safe，但不要求仅含 ASCII。
 - 每个药品一个 `{drug_id}.md`，不创建 `company.md`。
 - 重复范围限定在单个药品：每个 canonical source 在同一 `drug_id` 下使用稳定 `source_label`，并恰好对应同名的 `raw/{drug_id}@{source_label}.md` 与 `summary/{drug_id}@{source_label}.md`。同一 canonical source 可在不同药品下各自归档，不做跨药品排除。
 - summary 可以列出多个适应症；不得为了不同适应症复制同一来源。
 - 药品页、适应症页和根 `index.md` 中由 indexer 管理的来源数据块使用 managed index markers 标识。索引流程可增量写入和更新这些 managed blocks，同时保留 markers 外的人工段落、注释和排序；不得将索引行为描述为只读扫描。
-- `indication/` 是根级适应症索引；`attachments/` 保存附件；`.temp/plans/` 只保存 `drug-build` 持久化的临时计划。独立 `data-search` 只返回 plan。
+- `indication/` 是根级适应症索引；`attachments/` 保存附件；`.temp/plans/` 只保存 `drug-build` 持久化的临时计划。独立 `data-search` 只返回 plan。用户提交的 `<= 10 MiB` 来源 PDF 存入 `attachments/{drug_id}@{source_label}.pdf`（与配对 raw/summary 同名），raw 正文只写嵌入引用；`> 10 MiB` 的 PDF 维持文本提取进 raw。
 - 根目录扫描必须排除 `indication/`、`attachments/`、`.temp/`、隐藏目录和其他已知基础设施目录，不能将它们误判为公司。
 - 不存在全局 `raw/`、`summary/`、`drug/`、`trials/` 或其他全局内容根目录。试验注册结果进入对应 `{drug_id}.md`；公司专利 Mode C 只返回报告，不写临时文件。
 

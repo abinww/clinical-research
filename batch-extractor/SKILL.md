@@ -36,8 +36,8 @@ python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_pat
 
 第二条仅在提供过滤器时使用。无输出表示没有待处理 raw，直接报告并结束。两种模式进入后续步骤前都必须得到明确 raw 路径列表；`single_raw` 列表长度必须为 1。
 
-2. **建立上下文。** 脚本返回 `{company_id}/{drug_id}/raw/{drug_id}@{source_label}.md`。使用 `pathlib`/harness 解析路径组件，并派生同一药品树中的 `drug_dir`、`drug_page`、`raw_dir`、`summary_dir`、同名 `summary_file` 和根 `attachments_dir`。
-3. **校验身份。** 写入前读取根 `index.md`，用 `drug_id`、别名和完整 vault 路径联合确认恰好一个条目映射到 `{company_id}/{drug_id}/{drug_id}.md`。读取药品页构造标准身份对象，必要时调用 drug-identity `resolve_only` 校验；不得从 raw 猜测身份。`companies` 如存在必须与 `company_ids` 相同。
+2. **建立上下文。** 脚本返回 `{company_id}/raw/{drug_id}@{source_label}.md`。使用 `pathlib`/harness 解析路径组件，并派生公司级 `company_dir`、`drug_page`、`raw_dir`、`summary_dir`、同名 `summary_file` 和根 `attachments_dir`。
+3. **校验身份。** 写入前读取根 `index.md`，用 `drug_id`、别名和完整 vault 路径联合确认恰好一个条目映射到 `{company_id}/{drug_id}.md`。读取药品页构造标准身份对象，必要时调用 drug-identity `resolve_only` 校验；不得从 raw 猜测身份。`companies` 如存在必须与 `company_ids` 相同。
 4. **生成 summary。** 读取 raw，按 summary-spec 创建唯一 `summary_file`。只纳入 raw 支持的全部适应症和试验事实，保持分组、继承关系与 canonical 相对来源链接准确，不得串组或推断。
 5. **处理 PDF 图片。** URL 图保持远程链接。已有 raw 对应 PDF 且缺少关键图时，可用 harness/PDF 工具优先裁剪、否则保存整页到 `{research_dir}/attachments/`，并从 summary 以 `../../../attachments/{file}` 引用。工具不可用时继续文本 summary，报告原因，不伪造附件。
 6. **独立验证。** 每个新 summary 交给不同于生成者的 data-verify agent。verifier 从相对链接解析 raw，确认其为当前 `raw_dir` 的直接文件，并覆盖全部适应症分节。有 `FAIL` 时按问题修正文后交给新的独立 verifier；仍失败则不索引。保留并报告 `WARN`。

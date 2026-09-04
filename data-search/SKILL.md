@@ -43,10 +43,10 @@ target: {最简形式}
 archive_company: {规范归档公司 ID}
 company_ids: {研发公司及合作方的规范 company_id 列表}
 molecule_type: {ADC/双抗/单抗/小分子}
-drug_dir: {research_dir}/{company_id}/{drug_id}
-drug_page: {drug_dir}/{drug_id}.md
-raw_dir: {drug_dir}/raw
-summary_dir: {drug_dir}/summary
+company_dir: {research_dir}/{company_id}
+drug_page: {company_dir}/{drug_id}.md
+raw_dir: {company_dir}/raw
+summary_dir: {company_dir}/summary
 attachments_dir: {research_dir}/attachments
 ```
 
@@ -68,29 +68,29 @@ python {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id}" --d
 
 | 来源 | 搜索方式 |
 |---|---|
-| 公司官方渠道 | 官网 IR 管线页、新闻中心、业绩报告、PPT、港交所披露易、巨潮；同时搜索合作方公告；关键词 `{公司名} {drug} phase OR results press release` |
+| 公司官方渠道 | 官网 IR 管线页、新闻中心、网页版业绩/新闻稿、合作方公告；优先网页链接，**上市公司公告类 PDF（港交所披露易、巨潮等披露的公告 PDF）不作为来源**，有对应网页版时收录网页链接；关键词 `{公司名} {drug} phase OR results press release` |
 | 学术会议 | 逐个搜索 ASCO、ESMO、ESMO Asia、WCLC、SABCS、ASH、AACR、CSCO；关键词 `{代号} {会议名}`，不带年份；优先摘要库原文：ASCO/JCO `ascopubs.org`，ESMO `oncologypro.esmo.org`/`annalsofoncology.org`，WCLC `iaslc.org`，ASH `ashpublications.org`，AACR `aacrjournals.org`；记录摘要号和数据截止日 |
 | 期刊 | PubMed 搜索 `{drug}` 或 `{drug} {indication}`；定向搜索 `{drug} site:nejm.org OR site:thelancet.com OR site:jco.org OR site:nature.com` |
 | 行业媒体线索 | 医药魔方、Insight、药融云、Endpoints、Fierce Biotech；仅发现线索，随后回到公司、会议或期刊原始来源 |
 
 ## Step 4: 排除当前药品已提取来源
 
-只读扫描 **当前药品的 `raw_dir`** 中 YAML frontmatter 的 `source:`。保留 raw 中的准确 URL 字符串；本地 PDF 身份使用 `Path.resolve(strict=True).as_posix()` 得到的 resolved absolute POSIX path。不得扫描整个研究库，也不得传入或推断旧全局 `raw_dir`。
+只读扫描 **当前药品的公司级 `raw_dir`** 中 YAML frontmatter 的 `source:`。保留 raw 中的准确 URL 字符串；本地 PDF 身份使用其持久化值（`<= 10 MiB` 为附件绝对路径 `attachments/{drug_id}@{source_label}.pdf`，`> 10 MiB` 为原 PDF 的 `Path.resolve(strict=True).as_posix()`）。不得扫描整个研究库，也不得传入或推断旧全局 `raw_dir`。
 
 ```text
 python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" --format urls --strict
 ```
 
-`raw_dir` 是 `resolve_only` 返回的当前药品拟议或既有目录；目录不存在时集合为空。strict 扫描发现损坏 frontmatter、路径逃逸或配对异常时停止并报告，不得使用部分结果。
+`raw_dir` 是 `resolve_only` 返回的公司级 `{research_dir}/{company_id}/raw`；目录不存在时集合为空。strict 扫描发现损坏 frontmatter、路径逃逸或配对异常时停止并报告，不得使用部分结果。
 
-以 `(company_id, drug_id, source)` 为准确重复键。当前药品树中 canonical `source` 准确匹配的候选应剔除；其他药品树中的相同来源允许跨药复用，不得阻塞。所有流程比较 raw 中同一个 canonical 值，不得用 percent-decoded URL、PDF 文件名、相对路径或反斜杠路径替代。
+以 `(company_id, drug_id, source)` 为准确重复键。当前公司布局中 canonical `source` 准确匹配的候选应剔除；其他药品下的相同来源允许跨药复用，不得阻塞。所有流程比较 raw 中同一个 canonical 值，不得用 percent-decoded URL、PDF 文件名、相对路径或反斜杠路径替代。
 
 ## Step 5: 筛选与去重
 
 1. 先做轻量可达性预检（HEAD 或 basic fetch）。403、404 或连接失败时寻找同文镜像；仍不可达则排除。
 2. 用 `web_fetch` 确认内容包含 ORR、PFS、OS、AE 等临床疗效或安全性数据。
-3. 排除二手转述、百科、聚合页、纯新闻、CTG/注册页，以及付费墙无摘要、反爬或空页面等无法获取内容的来源。
-4. 同一 NCT 或试验代码默认按“期刊全文 > 会议摘要 > 公司公告 > 新闻稿”选择，但以实际可获取内容为准：付费墙期刊可降级为会议摘要；公司公告数据更完整时可保留公司公告；覆盖相当时选更可靠来源。相同截止日只保留一个最优来源，不同截止日均保留。
+3. 排除二手转述、百科、聚合页、纯新闻、CTG/注册页，以及付费墙无摘要、反爬或空页面等无法获取内容的来源。**上市公司公告的 PDF 载体一律不作为来源**（公告内容应通过网页版新闻稿、IR 页面或摘要库获取），避免 PDF 提取乱码。
+4. 同一 NCT 或试验代码默认按“期刊全文 > 会议摘要 > 公司公告 > 新闻稿”选择，但以实际可获取内容为准：付费墙期刊可降级为会议摘要；公司公告数据更完整时可保留公司公告（取网页版而非 PDF）；覆盖相当时选更可靠来源。相同截止日只保留一个最优来源，不同截止日均保留。
 5. 无 NCT 或试验代号但确含临床数据的来源纳入 plan，编号填 `—`。
 6. 最后按将持久化的准确 supplied/canonical-final URL 字符串去重，不做 percent decoding；仅语义等价但字符串不同的 URL 交人工判断。同一 URL 涉及多个适应症或试验时合并单元格，可用 `<br>` 或 `；` 分隔。
 

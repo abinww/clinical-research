@@ -12,11 +12,11 @@ SPEC.loader.exec_module(progress)
 
 
 def make_drug(root: Path, company: str = "公司", drug: str = "药物") -> Path:
-    directory = root / company / drug
-    (directory / "raw").mkdir(parents=True)
-    (directory / "summary").mkdir()
-    (directory / f"{drug}.md").write_text(f"# {drug}\n", encoding="utf-8")
-    return directory
+    company_dir = root / company
+    (company_dir / "raw").mkdir(parents=True)
+    (company_dir / "summary").mkdir()
+    (company_dir / f"{drug}.md").write_text(f"# {drug}\n", encoding="utf-8")
+    return company_dir
 
 
 class CheckPlanProgressTests(unittest.TestCase):
@@ -67,25 +67,24 @@ class CheckPlanProgressTests(unittest.TestCase):
 
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已验证未索引")
             (drug / "药甲.md").write_text(
-                "<!-- source_identity: 公司甲/药甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
+                "<!-- source_identity: 公司甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
             )
             index = root / "index.md"
             index.write_text(
-                "## 药品\n<!-- clinical-research:begin drugs -->\n"
-                "| drug_id | 通用名 | aliases | 靶点 | 归档公司 |\n|---|---|---|---|---|\n"
-                "| [[公司甲/药甲/药甲.md\\|药甲]] | 药甲 | — | — | 公司甲 |\n"
+                "## 药品\n<!-- clinical-research:begin drugs -->\n\n"
+                "| 归档公司 | drug_id | 通用名 | aliases | 靶点 |\n|---|---|---|---|---|\n"
+                "| 公司甲 | [[公司甲/药甲.md\\|药甲]] | 药甲 | — | — |\n"
                 "<!-- clinical-research:end drugs -->\n"
-                "## 适应症\n<!-- clinical-research:begin indications -->\n"
-                "| indication_id | 适应症 | 类别 | 治疗线 | 生物标志物 | 更新 |\n"
-                "|---|---|---|---|---|---|\n"
-                "| [[indication/NSCLC_1L.md\\|NSCLC_1L]] | NSCLC 一线 | NSCLC | 1L | — | 2026-01-01 |\n"
+                "## 适应症\n<!-- clinical-research:begin indications -->\n\n"
+                "| 适应症 | 类别 | 治疗线 | 生物标志物 | 更新 |\n|---|---|---|---|---|\n"
+                "| [[indication/NSCLC_1L.md\\|NSCLC 一线]] | NSCLC | 1L | — | 2026-01-01 |\n"
                 "<!-- clinical-research:end indications -->\n",
                 encoding="utf-8",
             )
             indication = root / "indication" / "NSCLC_1L.md"
             indication.parent.mkdir()
             indication.write_text(
-                "<!-- source_identity: 公司甲/药甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
+                "<!-- source_identity: 公司甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
             )
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已完成")
             indication.unlink()
@@ -134,7 +133,7 @@ class CheckPlanProgressTests(unittest.TestCase):
             root = Path(temporary)
             for company, drug_name in (("公司甲", "药甲"), ("公司乙", "药乙")):
                 drug = make_drug(root, company, drug_name)
-                (drug / "raw" / "source.md").write_text(
+                (drug / "raw" / f"{drug_name}@source.md").write_text(
                     "---\nsource: https://example.test/duplicate\n---\n", encoding="utf-8"
                 )
 

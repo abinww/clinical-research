@@ -19,7 +19,10 @@ def find_unprocessed(research_dir: Path, company_id: str | None = None, drug_id:
     raw, processed = research_sources(research_dir)
     pending = []
     for _, source in raw:
-        company, drug, *_ = source.split("/")
+        parts = source.split("/")
+        company = parts[0]
+        filename = parts[-1]
+        drug = filename.split("@", 1)[0]
         if company_id is not None and company != company_id:
             continue
         if drug_id is not None and drug != drug_id:

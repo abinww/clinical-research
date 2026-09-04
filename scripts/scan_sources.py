@@ -170,9 +170,7 @@ def summary_identity_valid(text: str, summary_path: str | Path) -> bool:
         return False
     if path.name != f"{drug_id}@{source_label}.md":
         return False
-    if path.parent.name != "summary" or path.parent.parent.name != drug_id:
-        return False
-    if path.parent.parent.parent.name != archive_company:
+    if path.parent.name != "summary" or path.parent.parent.name != archive_company:
         return False
     try:
         indications = summary_indications(text)
@@ -331,7 +329,7 @@ def semantic_markdown_files(directory: Path, min_depth: int = 0) -> list[Path]:
 def research_sources(
     research_dir: Path, anomalies: list[ScanAnomaly] | None = None
 ) -> tuple[list[tuple[Path, str]], dict[str, str]]:
-    """Return all raw files and the one-summary-per-source mapping."""
+    """Return all raw files and the one-summary-per-source mapping (company-shared dirs)."""
     raw: list[tuple[Path, str]] = []
     processed: dict[str, str] = {}
     linked: dict[str, str] = {}
@@ -342,16 +340,19 @@ def research_sources(
             anomalies,
             "invalid_layout",
             path,
-            "drug tree is invalid or resolves outside research root",
+            "company layout is invalid or resolves outside research root",
         )
-    for drug in drugs:
-        raw.extend(raw_sources(drug.raw, research_dir, anomalies))
-        if not drug.summary.is_dir():
+    company_dirs = sorted({drug.company_dir for drug in drugs})
+    for company_dir in company_dirs:
+        raw_dir = company_dir / "raw"
+        raw.extend(raw_sources(raw_dir, research_dir, anomalies))
+        summary_dir = company_dir / "summary"
+        if not summary_dir.is_dir():
             continue
-        if not is_contained(drug.summary, research_dir):
-            _anomaly(anomalies, "path_escape", drug.summary, "summary directory resolves outside research root")
+        if not is_contained(summary_dir, research_dir):
+            _anomaly(anomalies, "path_escape", summary_dir, "summary directory resolves outside research root")
             continue
-        for summary in sorted(drug.summary.glob("*.md")):
+        for summary in sorted(summary_dir.glob("*.md")):
             try:
                 if not is_contained(summary, research_dir):
                     _anomaly(anomalies, "path_escape", summary, "summary resolves outside research root")
@@ -360,8 +361,8 @@ def research_sources(
                 if source is None:
                     _anomaly(anomalies, "invalid_source_link", summary, "missing or malformed canonical source link")
                     continue
-                if not is_contained(source, drug.raw):
-                    _anomaly(anomalies, "path_escape", summary, "source link resolves outside drug raw directory")
+                if not is_contained(source, raw_dir):
+                    _anomaly(anomalies, "path_escape", summary, "source link resolves outside company raw directory")
                     continue
                 source_id = persistent_path(source, research_dir)
                 summary_id = persistent_path(summary, research_dir)

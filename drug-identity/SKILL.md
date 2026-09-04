@@ -22,17 +22,16 @@ description: |
 ├── index.md
 ├── indication/
 └── {company_id}/
-    └── {drug_id}/
-        ├── {drug_id}.md
-        ├── raw/
-        └── summary/
+    ├── {drug_id}.md
+    ├── raw/
+    └── summary/
 ```
 
 ```text
-drug_dir = {research_dir}/{company_id}/{drug_id}
-drug_page = {drug_dir}/{drug_id}.md
-raw_dir = {drug_dir}/raw
-summary_dir = {drug_dir}/summary
+company_dir = {research_dir}/{company_id}
+drug_page = {company_dir}/{drug_id}.md
+raw_dir = {company_dir}/raw
+summary_dir = {company_dir}/summary
 ```
 
 调用方必须显式传入模式；缺失时停止，不得猜测：
@@ -72,7 +71,7 @@ summary_dir = {drug_dir}/summary
 
 读取 `../config.yaml` 的唯一配置项 `research_dir`，然后首先读取 `{research_dir}/index.md`。任一不可读时停止并报告；不得猜测路径、跳过根索引搜索目录或 web。
 
-用输入名称匹配 `drug_id`、通用名和 `drug_aliases`。唯一命中时以索引中的 `drug_id` 和链接为准，从链接解析 `company_id`、`drug_dir`、`drug_page`，派生 `raw_dir`、`summary_dir`，并校验链接符合 `{company_id}/{drug_id}/{drug_id}.md`。多个条目命中、字段冲突或链接与 `drug_id` 不一致时，列出冲突并停止。
+用输入名称匹配 `drug_id`、通用名和 `drug_aliases`。唯一命中时以索引中的 `drug_id` 和链接为准，从链接解析 `company_id`、`drug_page`（`{company_id}/{drug_id}.md`），派生 `company_dir`、`raw_dir`、`summary_dir`。多个条目命中、字段冲突或链接与 `drug_id` 不一致时，列出冲突并停止。
 
 ### 2. 补充确认身份
 
@@ -101,11 +100,15 @@ summary_dir = {drug_dir}/summary
 根索引无既有归档时，依次选择唯一 `company_id`：
 
 1. 其他已确认别名命中的既有分配。
-2. 所有权或运营链条中离药品最近的中国上市实体；直接持有/运营实体优先于上市母公司或更高层公司。
+2. 所有权或运营链条中离药品最近的中国上市实体（A 股/港股等）。直接持有或运营药品的下属实体若未上市，不得作为归档公司，向上取最近且实际控制它的上市主体；例如 SYS6010 由未上市运营主体 巨石生物 持有、其上市控股方为 石药创新，则选 石药创新，而非更高层的 石药集团。多个同层上市候选时选实际控制运营主体者，仍并列则执行第 6 条。
 3. 距离相同时选原研方。
 4. 无合适中国上市实体时选海外上市原研方。
-5. 相关实体均未上市时选原研方。
+5. 相关实体均未上市时选原研方（此时未上市运营实体可以归档）。
 6. 所有权链不清、授权与持有关系冲突或候选并列时，列出依据并询问用户。
+
+- 上市状态必须经可靠来源确认（交易所列表、公司官网、监管公告），不得凭印象或搜索结果猜测。
+- 未上市的运营子公司不单独作为归档公司，也不新增公司表行；其名称可写入所属上市主体的公司表 `aliases` 便于解析，并在身份对象 `company_relationships` 中记录 role（如 运营主体/子公司）。
+- 公司表已有对应上市主体时优先复用既有行，不因出现子公司名而新建公司。
 
 使用公司常用短名而非法律全称：中国和日本公司通常用常见中文短名，西方公司通常用常见英文短名；根索引已有 alias 映射时必须用其规范短名。名称可含中文，但必须满足标识符语法。公司选择只确定归档位置；所有权变化可更新信息，但不自动迁移目录。
 
@@ -113,15 +116,15 @@ summary_dir = {drug_dir}/summary
 
 ### 5. 幂等创建布局（仅 `resolve_or_create`）
 
-身份和归档公司确认后，创建或补齐 `drug_dir`、`drug_page`、`raw_dir` 和 `summary_dir`。药品页不存在时按当前 2.0 drug schema 创建最小骨架，仅写已确认身份字段；存在时保留人工内容，仅补缺失身份字段和新确认 aliases。冲突不覆盖，改为记录并询问。
+身份和归档公司确认后，创建或补齐 `company_dir`、`drug_page`、`raw_dir` 和 `summary_dir`。药品页不存在时按当前 2.0 drug schema 创建最小骨架，仅写已确认身份字段；存在时保留人工内容，仅补缺失身份字段和新确认 aliases。冲突不覆盖，改为记录并询问。
 
 ### 6. 串行更新根索引（仅 `resolve_or_create`）
 
-布局成功后重读 `{research_dir}/index.md` 并复查冲突，再最小更新：新药新增可由 `drug_id`、通用名和任一 alias 命中的条目；记录规范 `company_id`；药品链接固定为完整 vault 路径 `[[{company_id}/{drug_id}/{drug_id}.md|{drug_id}]]`，不得添加 `research/` 或 `company/` 前缀；公司 aliases 和所有权规则写入集中区域。等价条目合并缺失信息，不重复追加，不重排无关内容，不迁移既有目录。
+布局成功后重读 `{research_dir}/index.md` 并复查冲突，再最小更新：新药新增可由 `drug_id`、通用名和任一 alias 命中的条目；记录规范 `company_id`；药品链接固定为完整 vault 路径 `[[{company_id}/{drug_id}.md|{drug_id}]]`，不得添加 `research/` 或 `company/` 前缀；公司 aliases 和所有权规则写入集中区域。等价条目合并缺失信息，不重复追加，不重排无关内容，不迁移既有目录。
 
 ### 7. 验证
 
-重新读取根索引和药品页，验证全部已确认 aliases 唯一命中同一 `drug_id`，索引链接、`company_id` 和实际路径一致，`drug_page` 存在，`raw_dir`、`summary_dir` 为目录，且重复执行不会新增条目、页面或目录。`resolve_only` 只验证既有路径；拟议路径不得按已存在验证。
+重新读取根索引和药品页，验证全部已确认 aliases 唯一命中同一 `drug_id`，索引链接、`company_id` 和实际路径一致，`drug_page` 存在，`raw_dir`、`summary_dir` 为公司级目录，且重复执行不会新增条目、页面或目录。`resolve_only` 只验证既有路径；拟议路径不得按已存在验证。
 
 ## 失败与恢复
 
@@ -146,10 +149,10 @@ company_relationships: {可选；company_id + role 对象列表，不参与路�
 molecule_type: {类型}
 company_id: {归档公司短名}
 research_dir: {配置解析后的绝对路径}
-drug_dir: {research_dir/company_id/drug_id 的绝对路径}
-drug_page: {drug_dir/drug_id.md 的绝对路径}
-raw_dir: {drug_dir/raw 的绝对路径}
-summary_dir: {drug_dir/summary 的绝对路径}
+company_dir: {research_dir/company_id 的绝对路径}
+drug_page: {company_dir/drug_id.md 的绝对路径}
+raw_dir: {company_dir/raw 的绝对路径}
+summary_dir: {company_dir/summary 的绝对路径}
 attachments_dir: {research_dir/attachments 的绝对路径}
 mode: {resolve_only|resolve_or_create}
 status: {resolved|created|existing|updated}

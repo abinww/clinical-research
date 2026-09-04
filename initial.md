@@ -32,13 +32,13 @@
 药品创建后的结构为：
 
 ```text
-{research_dir}/{company_id}/{drug_id}/
+{research_dir}/{company_id}/
 ├── {drug_id}.md
 ├── raw/{drug_id}@{source_label}.md
 └── summary/{drug_id}@{source_label}.md
 ```
 
-一个来源只允许一份 raw 和一份同名 summary。一份 summary 可以包含多个适应症。
+药品页 `{drug_id}.md` 直接位于公司目录根；`raw/`、`summary/` 是公司级共享目录，跨药品按 `{drug_id}@` 文件名前缀区分归属。一个来源只允许一份 raw 和一份同名 summary。一份 summary 可以包含多个适应症。
 
 ## Agent 初始化步骤
 
@@ -90,13 +90,15 @@ if not index_path.exists():
 ## 药品
 
 <!-- clinical-research:begin drugs -->
-| drug_id | 通用名 | aliases | 靶点 | 归档公司 |
-|---------|--------|---------|------|----------|
+
+| 归档公司 | drug_id | 通用名 | aliases | 靶点 |
+|----------|---------|--------|---------|------|
 <!-- clinical-research:end drugs -->
 
 ## 公司
 
 <!-- clinical-research:begin companies -->
+
 | company_id | 中文名 | 英文名 | aliases |
 |------------|--------|--------|---------|
 | AbbVie | 艾伯维 | AbbVie | AbbVie Inc. |
@@ -115,7 +117,7 @@ if not index_path.exists():
 | 恒瑞医药 | 恒瑞医药 | Jiangsu Hengrui Pharmaceuticals | 恒瑞; Hengrui |
 | 武田制药 | 武田制药 | Takeda Pharmaceutical | 武田; Takeda |
 | 百济神州 | 百济神州 | BeOne Medicines | BeiGene; BeOne; 百济 |
-| 石药创新 | 石药创新 | CSPC Innovation | 新诺威; CSPC Innovation Pharmaceutical |
+| 石药创新 | 石药创新 | CSPC Innovation | 新诺威; CSPC Innovation Pharmaceutical; 巨石生物 |
 | 石药集团 | 石药集团 | CSPC Pharmaceutical Group | CSPC; 石药 |
 | 第一三共 | 第一三共 | Daiichi Sankyo | 第一三共株式会社; Daiichi Sankyo Co., Ltd. |
 <!-- clinical-research:end companies -->
@@ -123,21 +125,24 @@ if not index_path.exists():
 ## 适应症
 
 <!-- clinical-research:begin indications -->
-| indication_id | 适应症 | 类别 | 治疗线 | 生物标志物 | 更新 |
-|---------------|--------|------|--------|------------|------|
+
+| 适应症 | 类别 | 治疗线 | 生物标志物 | 更新 |
+|--------|------|--------|------------|------|
 <!-- clinical-research:end indications -->
 
 ## Editing Rules
 
 - 查找公司或药品时先查本文件，再访问对应路径。
 - 别名用分号分隔；匹配到多个实体时必须消歧，不得猜测。
-- 创建药品时在 drugs markers 内补充药品行；第一列使用完整 vault wikilink `[[{company_id}/{drug_id}/{drug_id}.md|{drug_id}]]`，写入表格单元格时在 alias pipe 前加反斜杠。
-- 创建适应症页成功后在 indications markers 内补充适应症行；第一列使用完整 vault wikilink `[[indication/{indication_id}.md|{indication_id}]]`，写入表格单元格时在 alias pipe 前加反斜杠。
+- 归档公司优先选上市主体：所有权链中未上市的运营子公司（如 巨石生物）不单独作为归档公司或新增公司行，其名称并入所属上市主体（如 石药创新）的 aliases。
+- 用户提交的 `<= 10 MiB` 来源 PDF 存入根 `attachments/{drug_id}@{source_label}.pdf`，raw 正文只写嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`，不存提取文本；`> 10 MiB` 的 PDF 维持文本提取进 raw。
+- 创建药品时在 drugs markers 内补充药品行；`归档公司` 是第一列，`drug_id` 列使用完整 vault wikilink `[[{company_id}/{drug_id}.md|{drug_id}]]`，写入表格单元格时在 alias pipe 前加反斜杠。
+- 创建适应症页成功后在 indications markers 内补充适应症行；第一列 `适应症` 使用完整 vault wikilink `[[indication/{indication_id}.md|{中文显示名}]]`，写入表格单元格时在 alias pipe 前加反斜杠。
 - Agent 更新时保留用户添加的行、别名和备注。
-- 保持已有行顺序；新行按 ID 稳定排序后追加。只有新初始化或 pristine 空表才排序首次生成的全部行。
+- 药品表按 `归档公司` 升序、同公司内按 `drug_id` 升序确定性重排；适应症表保持已有行顺序，新行按 `indication_id` 稳定排序后追加。只有新初始化或 pristine 空表才排序适应症表首次生成的全部行。
 ```
 
-公司表条目不代表已创建公司实体，因此不得据此创建公司文件夹。`company_id` 使用 Windows-safe 的常见公司短名且可以包含中文：中日公司通常使用常见中文短名，西方公司通常使用常见英文短名。新增药品时才创建 `{research_dir}/{company_id}/{drug_id}/{raw,summary}` 和 `{drug_id}.md`，并更新药品表。
+公司表条目不代表已创建公司实体，因此不得据此创建公司文件夹。`company_id` 使用 Windows-safe 的常见公司短名且可以包含中文：中日公司通常使用常见中文短名，西方公司通常使用常见英文短名。新增药品时才创建 `{research_dir}/{company_id}/raw`、`{research_dir}/{company_id}/summary` 和 `{company_dir}/{drug_id}.md`（药品页），并更新药品表。
 
 ### 4. 验证结果
 
@@ -154,7 +159,7 @@ if not index_path.exists():
 
 - `config.yaml` 只包含绝对 `research_dir`。
 - 没有因初始化而生成任何公司目录，也没有 `company/` 根容器。
-- `index.md` 含药品、公司、适应症和 Editing Rules 四节；三个核心表分别位于唯一配对的 managed markers 内，表头符合 `schema/index-spec.md`。
+- `index.md` 含药品、公司、适应症和 Editing Rules 四节；三个核心表分别位于唯一配对的 managed markers 内，begin 标记与表格之间有空行，表头符合 `schema/index-spec.md`。
 - 后续扫描 vault 根目录时排除 `indication/`、`attachments/`、`.temp/`、所有隐藏目录和其他已知基础设施目录，不能将其视为公司。
 - 未创建 v1 全局内容目录或 `company.md`。
 

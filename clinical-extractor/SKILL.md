@@ -36,17 +36,17 @@ EXTRACT WRITE GATE:
 - 一个来源恰好创建一个 `{drug_id}@{source_label}.md` raw 和一个同名 summary；单份 summary 承载来源支持的全部适应症，不按适应症拆分。
 - 严格 create-only：不得覆盖、删除或修改任何既有 raw、summary、附件或索引引用。正式目录和 staging 目录都要求目标不存在。
 - canonical source、配对命名和 summary 来源链接严格遵守 summary-spec，不支持 v1 布局、命名或 wikilink。
-- raw 正文只能是工具返回的完整原始输出；summary 初写审核状态必须为 `pending/null/null`，不得自行验证。
+- raw 正文只能是工具返回的完整原始输出；唯一的例外是 `<= 10 MiB` 的附件化 PDF，其 raw 正文为一行嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`。summary 初写审核状态必须为 `pending/null/null`，不得自行验证。
 
 ## 工作流
 
 1. **校验门禁与来源身份。** 任一门禁不是 `yes` 即停止。目标已存在时返回“发现重复”，不得覆盖、删除、修改、追加序号或清理索引，即使调用方声称已授权替换。标签冲突只能使用 trial、abstract、analysis 等语义稳定后缀，不得使用 `_2` 等序号。
 2. **提取来源。** 记录 canonical source、来源明确披露的 `published_date`、实际提取日 `created` 和来源类型；发布日期或 phase 不明写 `null`。
-3. **写入 raw。** 创建 `{raw_dir}/{drug_id}@{source_label}.md`，仅添加以下 frontmatter，随后原样保存完整工具输出：
+3. **写入 raw。** 创建 `{raw_dir}/{drug_id}@{source_label}.md`，仅添加以下 frontmatter，随后原样保存完整工具输出（`<= 10 MiB` 的附件化 PDF 例外：正文只写嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`）：
 
 ```yaml
 ---
-source: {准确 URL，或 PDF 的 resolved absolute POSIX path}
+source: {准确 URL，或 PDF 的附件绝对路径（<= 10 MiB）/ resolved absolute POSIX path（> 10 MiB）}
 published_date: {YYYY-MM-DD 或 null}
 created: {YYYY-MM-DD}
 ---
@@ -63,14 +63,24 @@ created: {YYYY-MM-DD}
 
 ### PDF 提取
 
-- canonical source 固定为输入路径经 `Path.resolve(strict=True).as_posix()` 得到的绝对 POSIX 路径；预检、去重、写入和报告均使用同一值。
-- 按可用性依次使用 harness/PDF 工具、系统 `pdftotext` 或 `nano-pdf`，最后可运行：
+- 先按大小分流，决定 raw 的正文形态与 `source` 值：
+  - `<= 10 MiB`：运行以下脚本把 PDF 复制为根 `attachments/{drug_id}@{source_label}.pdf` 附件（与配对 raw/summary 同名）：
+
+    ```text
+    python {clinical_research_dir}/scripts/attach_pdf.py "{pdf_path}" "{attachments_dir}" "{drug_id}@{source_label}"
+    ```
+
+    输出 `attached {附件绝对 POSIX 路径}` 时，canonical source 固定为该附件路径；输出 `too_large` 时按 `> 10 MiB` 分支处理。
+  - `> 10 MiB`：canonical source 固定为输入路径经 `Path.resolve(strict=True).as_posix()` 得到的绝对 POSIX 路径。预检、去重、写入和报告均使用同一值。
+- `<= 10 MiB` 的 raw 只写 frontmatter（`source` 为附件绝对路径）和一行嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`，不保存提取文本。
+- `> 10 MiB` 的 raw 按可用性依次使用 harness/PDF 工具、系统 `pdftotext` 或 `nano-pdf`，最后可运行：
 
 ```text
 python {clinical_research_dir}/scripts/pdf_extract_fallback.py "{pdf_path}"
 ```
 
 - 命令须可在 Windows PowerShell 运行，不依赖 Bash；所有方式失败时停止，不得由模型重建 raw。
+- 无论哪种大小，都要从 PDF 读取文本用于生成 summary（`<= 10 MiB` 时读取附件或原 PDF）。
 - 对关键临床表格、Kaplan-Meier 曲线或试验设计图，使用可用工具优先裁剪图表，否则保存整页到调用方 `attachments_dir`。名称如 `{drug_id}@{source_label}@figure-01.png`，不得覆盖；summary 以 `../../../attachments/{file}` 引用。
 - 渲染不可用或失败不阻断文本提取；省略图片并报告“PDF 重要图片未生成”及原因，不得伪造附件。
 
@@ -93,7 +103,7 @@ python {clinical_research_dir}/scripts/pdf_extract_fallback.py "{pdf_path}"
 - raw: {raw_dir}/{drug_id}@{source_label}.md
 - summary: {summary_dir}/{drug_id}@{source_label}.md
 - indications: {数组}
-- attachments: {本次实际生成的 PDF 图片列表}
+- attachments: {本次实际生成的 PDF 附件及 PDF 图片列表}
 - warnings: {图片不可用等非致命问题}
 - 结果: 成功 / 失败 / 发现重复
 - 原因: {如有}
