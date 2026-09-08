@@ -49,8 +49,8 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 | 规则 | 药品页 | 适应症页 | 根 `index.md` |
 |---|---|---|---|
 | 写入范围 | 每个 summary 一个来源块；按 indications、trial identity、披露时间组织，保留全部适应症归属 | 每个 indication 按阶段分表（Phase III/Phase II），每药每阶段一条最优记录；安全性每药一行取最新阶段；被替换来源写入时间线 | 仅对应 managed markers 内当前主键行 |
-| 来源标记 | 块首行写唯一规范 `source_identity` | 每个来源 `source_identity` 集中置于 `## 数据对比表` 标题之后，恰好一次 | 不复制来源块，以 managed 药品/适应症表链接验证完整性 |
-| 链接 | summary/raw 使用相对路径，如 `summary/file.md`、`raw/file.md` | summary 和药品使用完整 vault 路径 wikilink；表行来源逐行引用对应 summary | 药品和适应症使用完整 vault 路径 wikilink |
+| 来源标记 | 药品页不写 `source_identity` 注释，以 `> 来源: [...](summary/{file}.md)` 相对链接为唯一来源身份，恰好一次 | 适应症页每个来源 `source_identity` 集中置于 `## 数据对比表` 标题之后，恰好一次 | 不复制来源块，以 managed 药品/适应症表链接验证完整性 |
+| 链接 | 药品页来源只使用相对路径 `summary/{file}.md`，不链接 raw | summary 和药品使用完整 vault 路径 wikilink；表行来源逐行引用对应 summary | 药品和适应症使用完整 vault 路径 wikilink |
 | wikilink pipe | 表内 alias `|` 写为 `\|`，表外用普通 `|`；解析时等价 | 同左 | 同左 |
 | 保留内容 | 保留章节、未知 frontmatter、人工注释和手工排序 | 保留未知字段、人工内容和手工排序；被替换的旧来源保留在数据时间线 | 保留用户段落、注释、自定义列/单元格、既有行顺序和无关格式 |
 | 合并与冲突 | 相同来源不重复；只补 schema 明确缺失内容；同 cohort/指标/披露时间冲突时并列保留来源并标记“数据差异待人工确认” | 相同来源不重复；同一阶段同药多来源按 indication schema 选优，冲突保留双方并标记待人工确认 | 按主键最小合并，等价条目/alias/链接不重复；公司或链接变化视为冲突，不覆盖或迁移 |
@@ -63,7 +63,7 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 
 | 目标 | 每个合格 summary 的期望状态 | 失败影响 |
 |---|---|---|
-| 药品页 `{research_dir}/{company_id}/{drug_id}.md` | 规范来源身份恰好一次 | 停止该 summary，不继续适应症页和根索引 |
+| 药品页 `{research_dir}/{company_id}/{drug_id}.md` | 来源的 `summary/{filename}.md` 相对链接恰好一次 | 停止该 summary，不继续适应症页和根索引 |
 | 每个非 schema 排除的 `{research_dir}/indication/{indication_id}.md` | 同一规范来源身份恰好一次 | 记录该项，继续其他 indication；summary 标为未完整归档 |
 | 根药品表 | `drug_id`、通用名、aliases 唯一链接正确药品页 | 当前条目未完整归档 |
 | 根适应症表 | 仅在对应页面成功写入并验证后 upsert | 不创建或更新失败页面的索引行 |
@@ -100,7 +100,7 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 3. `verification_coverage` 严格等于 `complete`。
 4. 正文恰有一个二级 `## 数据一致性审核`，且为最后一个二级章节；其中审核表具有 schema 要求列、结构完整且至少一行。每行状态必须精确解析为 `PASS`、`WARN` 或 `FAIL`，禁止子串、大小写模糊匹配或自由文本推断。
 5. `drug_id` 存在，且与目录名和相邻药品页身份一致。
-6. `indications` 是非空数组；每项具备 schema 要求的稳定 identity 和展示字段。`indication_id` 唯一，对象数、顺序与正文分组严格一致；不得去重或静默合并。
+6. `indications` 是非空标量字符串数组；元素唯一且符合 indication_id 语法，数量、顺序与正文 `## [{indication_id}]` 分组严格一致；不得去重或静默合并；适应症显示名以正文分组头为准，治疗线与生物标志物从正文 `试验设计` 提取。
 7. 原文链接指向同一公司的公司级 `raw/`，且符合 schema。
 8. 经第 1 步预协调后，根索引唯一链接该 `drug_id` 到当前药品页。
 9. 审核表覆盖每个适应症分组、临床数值、试验事实和关键 cohort/方案。空状态、未知状态、畸形行、重复且冲突的审核项或无法映射 section identity 的行均失败。
@@ -122,13 +122,13 @@ source_identity = {company_id}/summary/{filename}.md
 恒瑞/summary/SHR-1701@ASCO2026.md
 ```
 
-每个 managed 来源块首行写：
+适应症页每个 managed 来源块写：
 
 ```markdown
 <!-- source_identity: {company_id}/summary/{filename}.md -->
 ```
 
-同一目标页中该 identity 必须恰好一次。`company_id` 和药品链接以预协调后的根索引为准；summary 路径不一致时记录冲突，不移动文件或改写归属。独立检查目标矩阵各维度；来源位于错误药品页或适应症页时，不视为已归档，也不自动删除。
+同一适应症页中该 identity 必须恰好一次（表格与时间线的 summary wikilink 可多次出现，注释才是机器键）。药品页不写 `source_identity` 注释：每个来源块以 `> 来源: [{label}](summary/{filename}.md)` 相对链接为唯一来源身份，同一链接在本页恰好一次，且不得出现 raw 链接。`company_id` 和药品链接以预协调后的根索引为准；summary 路径不一致时记录冲突，不移动文件或改写归属。独立检查目标矩阵各维度；来源位于错误药品页或适应症页时，不视为已归档，也不自动删除。
 
 ### 4. 串行更新每个 summary
 
@@ -143,7 +143,7 @@ source_identity = {company_id}/summary/{filename}.md
 
 ### 5. 验证幂等性与完整性
 
-重读所有本轮目标并验证目标矩阵、链接类型、表内/表外 pipe 规则；三个根核心表的标题、managed markers 和结构仍唯一有效；药品表按 `归档公司`+`drug_id` 确定性重排，适应症表自定义列/单元格与既有行序未改变；每张适应症阶段子表内每药仅一条记录、安全性表每药仅一行，每个来源 `source_identity` 恰好一次；重复运行不新增数据块、链接、aliases 或页面。某一维度已归档不得掩盖另一维度缺失。
+重读所有本轮目标并验证目标矩阵、链接类型、表内/表外 pipe 规则；三个根核心表的标题、managed markers 和结构仍唯一有效；药品表按 `归档公司`+`drug_id` 确定性重排，适应症表自定义列/单元格与既有行序未改变；每张适应症阶段子表内每药仅一条记录、安全性表每药仅一行，每个来源在药品页以 summary 相对链接、在适应症页以 `source_identity` 恰好一次；重复运行不新增数据块、链接、aliases 或页面。某一维度已归档不得掩盖另一维度缺失。
 
 ## 失败与恢复
 

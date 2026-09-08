@@ -137,6 +137,16 @@ def _contains_source_identity(path: Path, identity: str, research_dir: Path) -> 
         return False
 
 
+def _contains_drug_summary_link(path: Path, filename: str) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        return False
+    return text.count(f"](summary/{filename})") == 1
+
+
 def _managed_region(text: str, name: str) -> str | None:
     begin, end = MANAGED_MARKERS[name]
     if text.count(begin) != 1 or text.count(end) != 1:
@@ -175,7 +185,7 @@ def _indexed_for_summary(research_dir: Path, summary: Path, summary_text: str) -
     drug_id = summary.name.split("@", 1)[0]
     drug_page = company_dir / f"{drug_id}.md"
     index = research_dir / "index.md"
-    if not _contains_source_identity(drug_page, identity, research_dir):
+    if not _contains_drug_summary_link(drug_page, summary.name):
         return False
     drug_target = persistent_path(drug_page, research_dir)
     if not _contains_managed_wikilink(index, "drugs", drug_target):

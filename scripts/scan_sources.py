@@ -20,6 +20,7 @@ from layout import EXCLUDED_NAMES, discover_drugs, is_contained, persistent_path
 SOURCE_LINK = re.compile(r"^>\s*来源原文\s*:\s*\[([^\]\r\n]+)\]\((\.\./raw/[^\r\n]+)\)\s*$", re.MULTILINE)
 SOURCE_DECLARATION = re.compile(r"^>\s*来源原文\s*:", re.MULTILINE)
 FRONTMATTER_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
+INDICATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}")
 
 
 @dataclass(frozen=True)
@@ -180,41 +181,67 @@ def summary_identity_valid(text: str, summary_path: str | Path) -> bool:
 
 
 def summary_indication_ids(text: str) -> list[str]:
-    """Return unique indication IDs from the restricted nested frontmatter shape."""
-    frontmatter = read_frontmatter(text)
-    values = []
-    for line_number, line in enumerate(frontmatter.splitlines(), 1):
-        match = re.match(r"^\s*-?\s*indication_id\s*:\s*(.*?)\s*$", line)
-        if not match:
-            continue
-        value = restricted_scalar(match.group(1), f"frontmatter indication_id line {line_number}")
-        if not value or value in values:
+    """Return unique indication IDs from the flat frontmatter indications list."""
+    return _indications_list(read_frontmatter(text))
+
+
+def _indications_list(frontmatter: str) -> list[str]:
+    """Parse the flat ``indications`` scalar list (flow, block, or single scalar)."""
+    lines = frontmatter.splitlines()
+    start = None
+    inline_value = ""
+    for index, line in enumerate(lines):
+        match = re.match(r"^indications\s*:\s*(.*)$", line)
+        if match:
+            start = index
+            inline_value = match.group(1).strip()
+            break
+    if start is None:
+        return []
+    values: list[str] = []
+    if inline_value:
+        if inline_value.startswith("["):
+            if not inline_value.endswith("]"):
+                raise ValueError("invalid indications list")
+            values.extend(item.strip() for item in inline_value[1:-1].split(",") if item.strip())
+        else:
+            values.append(inline_value)
+    else:
+        for line in lines[start + 1 :]:
+            item_match = re.match(r"^\s+-\s*(.+?)\s*$", line)
+            if not item_match:
+                break
+            values.append(item_match.group(1))
+    if not values:
+        return []
+    ids: list[str] = []
+    for value in values:
+        if not INDICATION_ID.fullmatch(value) or value in ids:
             raise ValueError("invalid or duplicate indication_id")
-        values.append(value)
-    return values
+        ids.append(value)
+    return ids
 
 
 def summary_indications(text: str) -> list[tuple[str, str]]:
-    """Return ``(indication_id, display_name)`` pairs from summary frontmatter."""
-    frontmatter = read_frontmatter(text)
+    """Return ``(indication_id, display_name)`` pairs from frontmatter IDs and body section headers."""
+    ids = summary_indication_ids(text)
+    if not ids:
+        return []
+    visible = _outside_fences(text)
+    headers: dict[str, str] = {}
+    for match in re.finditer(r"^##\s+\[([A-Za-z0-9][A-Za-z0-9._-]{0,79})\]\s*(.+?)\s*$", visible, re.MULTILINE):
+        indication_id, display = match.group(1), match.group(2)
+        if indication_id in headers:
+            raise ValueError("duplicate indication section")
+        headers[indication_id] = display
+    if len(headers) != len(ids):
+        raise ValueError("indications list does not match body sections")
     pairs: list[tuple[str, str]] = []
-    current_id = None
-    for line_number, line in enumerate(frontmatter.splitlines(), 1):
-        id_match = re.match(r"^\s*-?\s*indication_id\s*:\s*(.*?)\s*$", line)
-        if id_match:
-            if current_id is not None:
-                raise ValueError("indication_id missing indication display name")
-            current_id = restricted_scalar(id_match.group(1), f"frontmatter indication_id line {line_number}")
-            continue
-        name_match = re.match(r"^\s*indication\s*:\s*(.*?)\s*$", line)
-        if name_match and current_id is not None:
-            display = restricted_scalar(name_match.group(1), f"frontmatter indication line {line_number}")
-            if not current_id or not display or any(item[0] == current_id for item in pairs):
-                raise ValueError("invalid indication metadata")
-            pairs.append((current_id, display))
-            current_id = None
-    if current_id is not None:
-        raise ValueError("indication_id missing indication display name")
+    for indication_id in ids:
+        display = headers.get(indication_id)
+        if not display:
+            raise ValueError("indications list does not match body sections")
+        pairs.append((indication_id, display))
     return pairs
 
 

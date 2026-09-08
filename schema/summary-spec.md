@@ -22,7 +22,7 @@
 - 替换只能由 multi-extractor 执行，且必须在 `{research_dir}/.temp/replacements/{run-id}` 中先提取、结构校验并由独立 verifier 通过。commit 前逐字节备份准确旧 pair、全部 managed index documents（药品页、涉及的适应症页、根索引）及受影响附件并校验哈希；附件在 manifest 中记录复用/新增/移除，绝不先删除。正式安装使用可恢复的原子 replace 和持久化事务状态，任一步失败回滚全部已改文件并校验旧状态。
 - 实质不同的来源必须使用不同 `source_label`。
 - summary 文件名固定为 `{drug_id}@{source_label}.md`，不包含 `indication_id`，也不使用网页标题或 raw 文件名。
-- 一个来源涉及一个或多个适应症时，全部写在同一 summary，通过 YAML `indications` 对象列表和正文适应症分组表达。
+- 一个来源涉及一个或多个适应症时，全部写在同一 summary，通过 YAML `indications` 标量列表和正文适应症分组表达。
 - 摘要必须链接同目录的唯一 raw 原文，规范链接为 `> 来源原文: [label](../raw/file.md)`。
 
 ## 命名
@@ -51,20 +51,7 @@ raw frontmatter 的 `source` 是来源去重、替换和工作流比较使用的
 drug_id: ABC123
 drug: 示例单抗
 drug_aliases: [ABC-123, Examplemab]
-indications:
-  - indication_id: NSCLC_1L
-    indication: 非小细胞肺癌一线
-    line: 1L
-    biomarker: null
-    trials:
-      - trial_name: EXAMPLE-01
-        phase: Phase II
-        regimen: ABC123 + Pembrolizumab
-        cutoff: YYYY-MM-DD
-  - indication_id: NSCLC_2L
-    indication: 非小细胞肺癌二线
-    line: 2L
-    biomarker: null
+indications: [NSCLC_1L, NSCLC_2L]
 source_label: ASCO2026
 source_type: conference
 published_date: YYYY-MM-DD
@@ -88,7 +75,7 @@ verification_coverage: complete
 | `drug_id` | 字符串 | 必填，与所属目录和药品页一致 |
 | `drug` | 字符串 | 必填，药品展示名 |
 | `drug_aliases` | 数组 | 可选，药品别名和商品名 |
-| `indications` | 对象列表 | 必填，至少一个对象；每项含稳定 `indication_id`、`indication`，可含 `line`、`biomarker`、`trials` |
+| `indications` | 字符串数组 | 必填，至少一个元素；元素为唯一稳定 `indication_id`，顺序与正文 `## [{indication_id}] {适应症}` 分组严格一致；不得嵌套对象（Obsidian 属性面板兼容） |
 | `source_label` | 字符串 | 必填，与文件名一致 |
 | `source_type` | 枚举 | `journal`、`conference`、`company_release`、`regulatory`、`other` |
 | `published_date` | 日期或 null | 来源明确的发表、会议或发布日期；不能用提取日期代替 |
@@ -104,12 +91,12 @@ verification_coverage: complete
 | `verification_fail_count` | 整数或 null | `pending` 时为 `null`；审核后写实际 FAIL 数；可供下游使用的摘要必须为 `0` |
 | `verification_coverage` | 枚举或 null | `pending` 时为 `null`；独立审核覆盖完整后写 `complete`，否则不得标记为 passed |
 
-- `indications` 中不同治疗线数是不同对象；无法判断线数时 `line: null`，不得猜测为 `1L`。
-- indication 可含 `trials` 列表；每项至少用 `trial_name`（未知为 `null`）区分，并可含 `phase`、`regimen`、`cutoff`。cutoff 仅用来源明确的 `YYYY-MM-DD`，未知为 `null`。
-- 继承顺序为 trial 显式值 > indication 同名值 > 顶层共同值。indication 可用 `phase`、`regimen`、`cutoff` 作为其 trials 默认值。顶层 `phase`、`combination_regimen` 和来源级 cutoff 只有在所有适应症/试验相同时才作共同默认，否则写 `null`；显式 `null` 表示未知，不得从其他 trial 横向继承。
+- 适应症显示名以正文 `## [{indication_id}] {适应症}` 分组头为准，不在 frontmatter 重复。
+- 治疗线、生物标志物与试验信息（试验名称、阶段、方案、数据截止）一律写入正文 `试验设计`，不在 frontmatter 表达。
+- 顶层 `phase`、`combination_regimen`、`trial_name` 只有在所有适应症/试验相同时才作共同默认，否则写 `null`；显式 `null` 表示未知。
 - 探索性泛瘤种可以出现在 `indications` 中，但不会因此建立适应症页。
-- 同一来源对不同适应症采用不同方案、阶段或试验时，在对应正文的 `试验设计` 中明确差异；顶层字段写来源整体最准确的共同值，不能概括时写 `null`。
-- 不使用单数 `indication_id`、`indication` 字段，也不使用将适应症编码进文件名的设计。
+- 同一来源对不同适应症采用不同方案、阶段或试验时，在对应正文的 `试验设计` 中明确差异。
+- 不使用单数 `indication_id`、`indication` 顶层字段，不使用嵌套对象或对象列表，也不使用将适应症编码进文件名的设计。
 - summary 初次生成时必须写 `verification: pending`、`verification_fail_count: null` 和 `verification_coverage: null`，不得预先写 `passed`；示例中的 `passed/0/complete` 表示独立审核完成后的最终状态。
 
 ## 正文结构
@@ -122,6 +109,8 @@ verification_coverage: complete
 ## [{indication_id A}] {适应症 A}
 
 ### 核心数据
+
+### 患者基线
 
 ### 临床数据图片
 
@@ -140,11 +129,11 @@ verification_coverage: complete
 ## 数据一致性审核
 ```
 
-- 正文必须按 `indications` 顺序分组，每个 `## [{indication_id}] {indication}` 与一个对象一一对应；稳定 ID 是机器映射键。
+- 正文必须按 `indications` 顺序分组，每个 `## [{indication_id}] {适应症}` 与列表中一个 ID 一一对应；稳定 ID 是机器映射键，适应症显示名以分组头为准。
 - 来源链接紧随一级标题且全文件只写一次，必须采用 `[label](../raw/file.md)`，其中 label 是可读来源名。
 - 来源为 `<= 10 MiB` 的附件化 PDF 时，raw 正文只是嵌入引用；summary 的来源链接仍指向该 raw，审核证据从附件 PDF 读取。
-- 每个适应症独立包含核心数据和试验设计；不得把多适应症数值混入同一张无明确分组的表。
-- 没有临床图片时省略 `临床数据图片`。`专家点评` 必须明确为分析性内容，不得冒充来源事实。
+- 每个适应症独立包含核心数据、基线（如有）和试验设计；不得把多适应症数值混入同一张无明确分组的表。
+- raw 未提供基线数据时省略 `### 患者基线`；没有临床图片时省略 `临床数据图片`。`专家点评` 必须明确为分析性内容，不得冒充来源事实。
 - `数据一致性审核` 位于整个文件末尾，覆盖所有适应症。
 
 ## 核心临床表
@@ -183,9 +172,30 @@ verification_coverage: complete
 - 缺失数据用 `—`；明确未成熟或未评估可用 `NE` 并在备注中解释。
 - `TEAE`、`TRAE`、`AE`、`SAE` 必须严格沿用来源术语，不得互换。
 
+## 患者基线
+
+每个适应症在 `### 患者基线` 中用 Markdown 表格记录来源披露的基线人群特征；**raw 未提供基线数据时整节省略该节**。
+
+```markdown
+### 患者基线
+
+| 基线特征 | ABC123 + Pembrolizumab | 对照组 |
+|----------|------------------------|--------|
+| 年龄（中位） | 62 | 61 |
+| 男性 | 55.0% | 52.0% |
+| ECOG 0-1 | 78.0% | 80.0% |
+| 既往治疗线数（中位） | 2 | 2 |
+| 脑转移 | 12.0% | 10.0% |
+| PD-L1 >=1% | 45.0% | 44.0% |
+```
+
+- 指标为行、cohort 为列，cohort 划分必须与 `核心数据` 主表一致，不得串组。
+- 按来源实际披露收录，常见指标如年龄（中位/范围）、性别、ECOG、既往治疗线数、关键转移部位、生物标志物基线（如 PD-L1）等；不得臆造指标。
+- 百分比保留一位小数；数值保留来源单位；缺失写 `—`；不使用空白单元格。
+
 ## 试验设计
 
-每个适应症至少记录可由来源支持的设计事实。多适应症来源必须分别说明人群、cohort 和方案。
+每个适应症至少记录可由来源支持的设计事实；治疗线与生物标志物只在本节表达。多适应症来源必须分别说明人群、cohort 和方案；同一适应症涉及多个试验时按试验分表，每表首行写明 `试验名称`。
 
 ```markdown
 ### 试验设计
@@ -195,6 +205,8 @@ verification_coverage: complete
 | 研究类型 | {随机、开放标签等} |
 | 试验名称 | {trial_name} |
 | 阶段 | {phase} |
+| 治疗线 | {1L/2L/3L+/Later 或 —} |
+| 生物标志物 | {入组标志物要求或 —} |
 | 入组人数 | {来源值} |
 | 入组人群 | {适应症、治疗线和关键标志物} |
 | 用药方案 | {剂量、频次、联合方案} |
@@ -203,7 +215,7 @@ verification_coverage: complete
 | 数据截止 | {来源值或 —} |
 ```
 
-基线人群数据可追加到本节。来源未披露的事实写 `—`，不得推测。
+来源未披露的事实写 `—`，不得推测。
 
 ## 专家点评
 
@@ -219,6 +231,7 @@ verification_coverage: complete
 - 疗效：ORR、cORR、DCR、CR、PR、SD、mPFS、rPFS、mOS、mDOR、DOR。
 - 统计量：HR、p-value、CI。
 - 安全性：AE、TEAE、TRAE、SAE、>=3 级事件、减量、停药、死亡。
+- 基线：年龄、性别、ECOG、既往治疗线数、关键基线特征（转移、生物标志物基线等）等来源披露的数值。
 - 试验事实：适应症、治疗线、phase、trial name、cohort、剂量、方案、对照、会议或发布日期、数据截止时间。
 
 状态定义：
@@ -250,10 +263,11 @@ verification_coverage: complete
 - [ ] 此摘要只对应一个 raw，且使用规范来源链接 `> 来源原文: [label](../raw/file.md)`。
 - [ ] raw `source` 为准确 URL（不 percent decode），或 PDF 的附件绝对路径（`<= 10 MiB`）/ 原 PDF resolved absolute POSIX path（`> 10 MiB`），且去重与替换比较使用同一个持久值。
 - [ ] PDF 来源 `<= 10 MiB` 时：`attachments/{drug_id}@{source_label}.pdf` 存在且内容与 raw `source` 一致，raw 正文为嵌入引用；PDF 来源 `> 10 MiB` 时：raw 正文保存提取文本。
-- [ ] `indications` 是至少含一个对象的列表，正文以 `## [{indication_id}] {indication}` 分组，trial 字段遵守继承规则。
-- [ ] 未使用单数适应症字段，也未在文件名中编码适应症。
+- [ ] `indications` 是至少含一个元素的标量字符串数组，无嵌套对象，顺序与正文 `## [{indication_id}] {适应症}` 分组一一对应；显示名以正文分组头为准。
+- [ ] 未使用单数适应症字段、嵌套 frontmatter 对象，也未在文件名中编码适应症。
 - [ ] 每个适应症的主表以指标为行、cohort 为列，第一条数据行为 `N`。
 - [ ] 多适应症数据、cohort、剂量和对照没有串组。
-- [ ] 试验设计事实可在 raw 中追溯，缺失事实未被猜测。
-- [ ] 审核位于文件末尾并覆盖全部数值和试验事实。
+- [ ] 治疗线、生物标志物与试验信息在正文 `试验设计` 中可追溯；raw 含基线数据时 `### 患者基线` 存在且 cohort 与核心数据对齐，无基线时省略。
+- [ ] 试验设计事实与基线数值可在 raw 中追溯，缺失事实未被猜测。
+- [ ] 审核位于文件末尾并覆盖全部数值（含基线）和试验事实。
 - [ ] `verification_fail_count` 与审核结果一致；存在 FAIL 的摘要未标记为 passed。

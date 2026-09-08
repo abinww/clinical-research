@@ -78,7 +78,7 @@ class CheckPlanProgressTests(unittest.TestCase):
             summary.write_text(
                 "---\ndrug_id: 药甲\nsource_label: Trial\narchive_company: 公司甲\n"
                 "verification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
-                "indications:\n  - indication_id: NSCLC_1L\n    indication: NSCLC 一线\n---\n"
+                "indications: [NSCLC_1L]\n---\n"
                 "> 来源原文: [试验原文](../raw/%E8%8D%AF%E7%94%B2@Trial.md)\n"
                 "## [NSCLC_1L] NSCLC 一线\n\n### 核心数据\n\n"
                 "## 数据一致性审核\n\n| indication_id | 数据项 | 状态 |\n|---|---|---|\n"
@@ -88,7 +88,7 @@ class CheckPlanProgressTests(unittest.TestCase):
 
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已验证未索引")
             (drug / "药甲.md").write_text(
-                "<!-- source_identity: 公司甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
+                "> 来源: [药甲@Trial](summary/药甲@Trial.md)\n", encoding="utf-8"
             )
             index = root / "index.md"
             index.write_text(
@@ -135,7 +135,7 @@ class CheckPlanProgressTests(unittest.TestCase):
     def test_completion_requires_consistent_audit_state(self):
         valid = (
             "---\nverification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
-            "indications:\n  - indication_id: NSCLC_1L\n    indication: NSCLC 一线\n---\n"
+            "indications: [NSCLC_1L]\n---\n"
             "## [NSCLC_1L] NSCLC 一线\n\n### 核心数据\n\n"
             "## 数据一致性审核\n\n| indication_id | 数据项 | 值 | 证据 | 状态 |\n"
             "|---|---|---|---|---|\n| NSCLC_1L | ORR | 42% | text | PASS |\n"

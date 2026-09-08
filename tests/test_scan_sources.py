@@ -13,6 +13,8 @@ from scripts.scan_sources import (
     source_raw_name,
     source_link,
     summary_audit_passed,
+    summary_indication_ids,
+    summary_indications,
 )
 
 
@@ -111,10 +113,35 @@ class ScanSourcesTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             frontmatter_value("source: one\nsource: two", "source")
 
+    def test_flat_indications_parsing_variants(self):
+        flow = (
+            "---\nindications: [NSCLC_1L, NSCLC_2L]\n---\n"
+            "## [NSCLC_1L] NSCLC 一线\n\n## [NSCLC_2L] NSCLC 二线\n"
+        )
+        self.assertEqual(summary_indications(flow), [("NSCLC_1L", "NSCLC 一线"), ("NSCLC_2L", "NSCLC 二线")])
+        block = (
+            "---\nindications:\n  - NSCLC_1L\n  - NSCLC_2L\n---\n"
+            "## [NSCLC_1L] NSCLC 一线\n\n## [NSCLC_2L] NSCLC 二线\n"
+        )
+        self.assertEqual(summary_indication_ids(block), ["NSCLC_1L", "NSCLC_2L"])
+        single = "---\nindications: NSCLC_1L\n---\n## [NSCLC_1L] NSCLC 一线\n"
+        self.assertEqual(summary_indications(single), [("NSCLC_1L", "NSCLC 一线")])
+
+    def test_flat_indications_rejects_nested_duplicate_and_mismatch(self):
+        nested = "---\nindications:\n  - indication_id: NSCLC_1L\n---\n## [NSCLC_1L] NSCLC 一线\n"
+        with self.assertRaises(ValueError):
+            summary_indication_ids(nested)
+        duplicate = "---\nindications: [NSCLC_1L, NSCLC_1L]\n---\n"
+        with self.assertRaises(ValueError):
+            summary_indication_ids(duplicate)
+        mismatched = "---\nindications: [NSCLC_1L]\n---\n## [NSCLC_2L] NSCLC 二线\n"
+        with self.assertRaises(ValueError):
+            summary_indications(mismatched)
+
     def test_audit_requires_real_final_heading_and_nonempty_canonical_table(self):
         prefix = (
             "---\nverification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
-            "indications:\n  - indication_id: NSCLC_1L\n    indication: NSCLC 一线\n---\n"
+            "indications: [NSCLC_1L]\n---\n"
         )
         valid = (
             prefix

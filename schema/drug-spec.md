@@ -109,8 +109,6 @@ updated: YYYY-MM-DD
 ```markdown
 ### {适应症名称}
 
-<!-- source_identity: {company_id}/summary/{drug_id}@{source_label}.md -->
-
 > {source_label}
 
 | 指标 | {cohort 1} | {cohort 2} | {对照组} |
@@ -119,14 +117,16 @@ updated: YYYY-MM-DD
 | ORR | ... | ... | ... |
 | >=3 TRAE | ... | ... | ... |
 
-> 来源: [ABC123@ASCO2026.md](ABC123@ASCO2026.md)
+> 来源: [ABC123@ASCO2026.md](summary/ABC123@ASCO2026.md)
 ```
 
 ### 表格规则
 
 - 直接嵌入摘要中该适应症的有效性主表，保持指标为行、cohort 为列，不转置、不重新计算数值。
 - 药品页只嵌入含有效性数据的主表；仅安全性或亚组分表通过摘要链接查看。
-- 表格上方只写 `> {source_label}`；表格下方使用相对药品页的同目录链接 `{file}.md`（药品页与 `summary/` 同在公司目录根，摘要文件名为 `{drug_id}@{source_label}.md`）。
+- 表格上方只写 `> {source_label}`；表格下方使用相对药品页的 `summary/{file}.md` 链接（药品页在公司目录根，`summary/` 为同级子目录）。
+- 药品页只链接 summary，不链接 raw——raw 只由 summary 的 `> 来源原文:` 溯源引用。
+- 每个来源块以 `> 来源: [...](summary/{file}.md)` 相对链接为唯一来源身份，同一链接在本页恰好出现一次；不写 `source_identity` 注释。
 - 不同 `trial_name` 分成不同表格。
 - 同一 `trial_name` 的不同数据成熟度可合成一表：同一 cohort 保持同列，不同披露点新增指标行并在指标名注明标签，如 `cORR (ASCO 2026)`。
 - 合并表的来源行列出全部摘要链接，以 ` | ` 分隔。一个摘要可同时为多个适应症章节提供各自的数据。
@@ -219,7 +219,7 @@ updated: YYYY-MM-DD
 - [ ] 临床数据和里程碑只来自审核通过且 `FAIL=0` 的本药品摘要（文件名 `{drug_id}@` 前缀）。
 - [ ] 临床数据按适应症分组，多适应症摘要的数据未串组。
 - [ ] 不同试验分表；同试验不同成熟度按规则合并且保留全部来源。
-- [ ] 药品页摘要链接使用同目录 `{file}.md`（如 `ABC123@ASCO2026.md`）。
+- [ ] 药品页来源链接使用 `summary/{file}.md` 相对路径；不链接 raw，不写 `source_identity` 注释，同一来源链接恰好一次。
 - [ ] 管线表保留官方试验链接、更新时间、完整方案和开展国家。
 - [ ] 专利类型、排序、来源和排除规则均满足本规范。
 - [ ] 表格无空单元格；缺失值使用 `—`。

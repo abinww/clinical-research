@@ -17,7 +17,7 @@ description: |
 
 - 普通提取使用正式 `raw_dir`、`summary_dir` 和根 `attachments_dir`。
 - replacement 使用 orchestrator 明确提供、且同属一个 staging 根的三个对应目录。
-- `source_label`、文件名、frontmatter、正文结构和字段继承以 `../schema/summary-spec.md` 为权威契约。
+- `source_label`、文件名、frontmatter 和正文结构以 `../schema/summary-spec.md` 为权威契约。
 
 写入前输出并确认：
 
@@ -52,8 +52,9 @@ created: {YYYY-MM-DD}
 ---
 ```
 
-4. **写入 summary。** 从刚创建的 raw 生成唯一同名 summary，完整遵守 summary-spec。写入前再次确认 raw 存在、canonical 相对链接精确指向它、文件名匹配且只生成一个 summary。
-5. **核对配对。** 确认两个文件同名、来源身份一致，并列出本次实际创建的附件和警告。
+4. **无数据跳过（兜底门禁）。** 来源为公司公告或新闻媒体（`source_type` 为 `company_release`，或 `other` 且为新闻/公告页）时，检查刚创建的 raw：若不含任何具体临床数值（样本量 N、ORR/PFS/OS/HR/CI、AE 发生率等），删除仅由本次创建的 raw 并返回 `无数据跳过`，不生成 summary，不写入任何文件。期刊与会议来源无数值时按提取失败处理，不适用本门禁。
+5. **写入 summary。** 从刚创建的 raw 生成唯一同名 summary，完整遵守 summary-spec。写入前再次确认 raw 存在、canonical 相对链接精确指向它、文件名匹配且只生成一个 summary。
+6. **核对配对。** 确认两个文件同名、来源身份一致，并列出本次实际创建的附件和警告。
 
 ### URL 提取
 
@@ -87,7 +88,7 @@ python {clinical_research_dir}/scripts/pdf_extract_fallback.py "{pdf_path}"
 ### 内容要求
 
 - raw 正文不得压缩、总结、翻译、重排、去重、润色或补全。官方 API 补充缺失 metadata 时，只能在末尾追加注明来源和获取日期的独立章节。
-- summary 只纳入原文支持的适应症，按 summary-spec 表达身份、`indications`、试验继承和正文分节；phase、cohort、方案、治疗线或 cutoff 不明时写“未披露”或 `null`，不得推断或串组。
+- summary 只纳入原文支持的适应症：frontmatter `indications` 用标量 ID 列表、顺序与正文分节一致；治疗线、生物标志物与试验信息写入 `试验设计`（多试验分表）；raw 含患者基线数据时生成 `### 患者基线` 表（cohort 与核心数据对齐），无基线则省略。phase、cohort、方案、治疗线或 cutoff 不明时写“未披露”或 `null`，不得推断或串组。
 - summary 的 URL 图仅引用远程地址，PDF 图仅引用实际生成的附件。
 
 ## 失败与恢复
@@ -105,6 +106,6 @@ python {clinical_research_dir}/scripts/pdf_extract_fallback.py "{pdf_path}"
 - indications: {数组}
 - attachments: {本次实际生成的 PDF 附件及 PDF 图片列表}
 - warnings: {图片不可用等非致命问题}
-- 结果: 成功 / 失败 / 发现重复
+- 结果: 成功 / 失败 / 发现重复 / 无数据跳过
 - 原因: {如有}
 ```
