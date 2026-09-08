@@ -50,9 +50,9 @@ python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" -
 | 完成 | 最终复检全部文件、哈希和引用成功后才标记 `committed` |
 
 4. **分配标签与检查来源。** URL 做轻量可达性检查，失败时尝试官方同文镜像；若改用镜像或重定向 final URL，持久化和比较统一使用选定字符串。PDF 不在预检重复提取；`<= 10 MiB` 的来源 PDF 先确定 `source_label`，再按 `scripts/attach_pdf.py` 复制为 `attachments/{drug_id}@{source_label}.pdf` 并以此为 canonical source。按 summary-spec 分配药品内唯一、稳定的 `source_label`；冲突用 `_TrialABC`、`_Abstract1234`、`_FinalAnalysis` 等最短语义后缀，不得用 `_2`、`_3`。
-5. **按来源提取。** 每个来源派发一个隔离的 clinical-extractor agent，每轮最多 5 个，并注入来源、canonical source、`config_path`、`source_label` 及完整 drug-identity 对象；普通提取传正式写目录，replacement 传 staging 目录。要求只写指定 create-only 目标。`<= 10 MiB` PDF 传入附件后的绝对路径作为 canonical source。
+5. **按来源提取。** 每个来源派发一个隔离的 clinical-extractor agent，每轮最多 5 个（或 harness 允许的上限），并注入来源、canonical source、`config_path`、`source_label` 及完整 drug-identity 对象；普通提取传正式写目录，replacement 传 staging 目录。要求只写指定 create-only 目标。`<= 10 MiB` PDF 传入附件后的绝对路径作为 canonical source。
 6. **核对与重试。** 用 harness 文件工具确认返回的 raw/summary 存在、同名、canonical link 正确，且每来源只有一个 summary。失败项携原因重试一次；仍失败则记录，不影响其他来源。PDF 图片工具不可用只记警告，不伪造图片，也不因此重复文本提取。
-7. **独立验证。** 只把本轮成功 summary 的明确路径派发给独立 data-verify agent，每轮最多 5 个；从 summary 的 canonical link 解析 raw，并覆盖全部 `indications`。verifier 不联网、不修改正文。`FAIL` 由主编排按证据问题修正文后交给新的独立 verifier；连续两轮仍失败则停止该项。`WARN` 可继续但须列为人工复核项。
+7. **独立验证。** 只把本轮成功 summary 的明确路径派发给独立 data-verify agent，每轮最多 5 个（或 harness 允许的上限）；从 summary 的 canonical link 解析 raw，并覆盖全部 `indications`。verifier 不联网、不修改正文。`FAIL` 由主编排按证据问题修正文后交给新的独立 verifier；连续两轮仍失败则停止该项。`WARN` 可继续但须列为人工复核项。
 8. **派发索引。** 只将通过 clinical-indexer 完整资格门禁的本轮 summary 以部分模式派发。每个 summary 对药品页只更新一次，并展开全部 `indications` 更新对应适应症页；所有索引项引用同一 summary。索引器不支持多适应症时停止该项并报告，不拆 summary、不退回旧格式。索引失败不回滚已验证的 raw/summary。
 
 ## 失败与恢复

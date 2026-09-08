@@ -47,6 +47,27 @@ class CheckPlanProgressTests(unittest.TestCase):
             )
             self.assertEqual(progress.extract_urls_from_plan(plan), ["https://example.test/source"])
 
+    def test_candidate_list_section_is_not_parsed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            plan = Path(temporary) / "plan.md"
+            plan.write_text(
+                "# plan\n"
+                "> 来源挑选: 已确认 2026-09-08（选中 2 / 候选 2）\n\n"
+                "| # | 临床代码或NCT编号 | 适应症 | 临床阶段 | 来源类型 | 数据截止日 | 网址链接 | 备注 |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| 1 | NCT1 | NSCLC | Phase III | journal | 2026-05 | https://example.test/a | — |\n"
+                "| 2 | — | 胃癌 | Phase II | conference | 2025-09 | [来源](https://example.test/b) | — |\n"
+                "\n"
+                "## 候选（未入库）\n\n"
+                "- #3 Phase I 截止2024-03 https://example.test/c（1期 ASCO2024）\n"
+                "- [候选](https://example.test/d)\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                progress.extract_urls_from_plan(plan),
+                ["https://example.test/a", "https://example.test/b"],
+            )
+
     def test_checks_nested_drug_by_global_url_and_canonical_source_link(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "研究"
