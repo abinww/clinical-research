@@ -63,10 +63,10 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 
 | 目标 | 每个合格 summary 的期望状态 | 失败影响 |
 |---|---|---|
-| 药品页 `{research_dir}/{company_id}/{drug_id}.md` | 来源的 `summary/{filename}.md` 相对链接恰好一次 | 停止该 summary，不继续适应症页和根索引 |
-| 每个非 schema 排除的 `{research_dir}/indication/{indication_id}.md` | 同一规范来源身份恰好一次 | 记录该项，继续其他 indication；summary 标为未完整归档 |
-| 根药品表 | `drug_id`、通用名、aliases 唯一链接正确药品页 | 当前条目未完整归档 |
-| 根适应症表 | 仅在对应页面成功写入并验证后 upsert | 不创建或更新失败页面的索引行 |
+| 药品页 `{research_dir}/{company_id}/{drug_id}.md` | 来源的 `summary/{filename}.md` 相对链接恰好一次，返回 `drug_page: completed` | 返回 `drug_page: blocked/incomplete`，不把本 summary 报为 indexed |
+| 每个非 schema 排除的 `{research_dir}/indication/{indication_id}.md` | 同一规范来源身份恰好一次，返回 `indication_pages: completed` | 返回具体 indication 失败状态，summary 报为未完整归档 |
+| 根药品表 | `drug_id`、通用名、aliases 唯一链接正确药品页，属于 `root_index` 结果 | 返回 `root_index: blocked/incomplete` |
+| 根适应症表 | 仅在对应页面成功写入后 upsert，属于 `root_index` 结果 | 不创建或更新失败页面的索引行 |
 
 ## 流程
 
@@ -141,9 +141,9 @@ source_identity = {company_id}/summary/{filename}.md
 5. 药品页完成后，重读根索引并最小 upsert 当前药品的 `归档公司`、`drug_id`、常用通用名、aliases、`company_id`、药品页完整 vault wikilink，以及 schema 要求且可由已验证内容确定的信息；随后药品表按 `归档公司` 升序、同公司内按 `drug_id` 升序确定性重排。公司 aliases 和所有权规则仍集中保存。
 6. 适应症失败不撤销已成功的药品或其他适应症 upsert，但 summary 必须标为未完整归档。当前根条目已完整且无新信息时不写文件。
 
-### 5. 验证幂等性与完整性
+### 5. 返回状态与幂等性
 
-重读所有本轮目标并验证目标矩阵、链接类型、表内/表外 pipe 规则；三个根核心表的标题、managed markers 和结构仍唯一有效；药品表按 `归档公司`+`drug_id` 确定性重排，适应症表自定义列/单元格与既有行序未改变；每张适应症阶段子表内每药仅一条记录、安全性表每药仅一行，每个来源在药品页以 summary 相对链接、在适应症页以 `source_identity` 恰好一次；重复运行不新增数据块、链接、aliases 或页面。某一维度已归档不得掩盖另一维度缺失。
+每个写入动作完成后直接记录对应目标状态，不另起 verifier 或 subagent。成功写入药品页后返回 `drug_page: completed`；全部应建适应症页成功后返回 `indication_pages: completed`；根索引药品表和适应症表成功后返回 `root_index: completed`。任一写入或结构冲突失败则返回具体目标的 `incomplete` 或 `blocked`，不得把部分成功汇总为 indexed。重复运行仍须幂等：不新增数据块、链接、aliases 或页面；药品表按 `归档公司`+`drug_id` 确定性重排，适应症表自定义列/单元格与既有行序未改变。
 
 ## 失败与恢复
 
@@ -155,11 +155,15 @@ source_identity = {company_id}/summary/{filename}.md
 ## 输出
 
 ```text
-clinical-indexer 2.0 增量归档完成：
+clinical-indexer 2.0 增量归档结果：
 模式: full | partial
 扫描 summary: N
 合格: A
 跳过: B
+drug_page: completed / incomplete / blocked
+indication_pages: completed / incomplete / blocked
+root_index: completed / incomplete / blocked
+overall_status: indexed / blocked / incomplete
 资格跳过明细:
 - verification 非 passed: B1
 - verification_fail_count 非 0: B2

@@ -39,7 +39,7 @@ python "{clinical_research_dir}/drug-build/scripts/check_plan_progress.py" --con
 
 ## 不变量与写入策略
 
-- `已完成` 等于 fully indexed：raw/summary、完整审核门禁、药品页、全部应建适应症页和根索引均完整。只有主表全部行 `fully indexed` 且候选区为空时才删除 plan；候选区非空时保留 plan 并在输出注明。
+- `已完成` 等于 fully indexed：raw/summary、完整审核门禁、药品页、全部应建适应症页和根索引均完整。`verified_unindexed` 只表示 summary 已审核但 clinical-indexer 尚未完成，绝不是完成状态。只有主表全部行 `fully indexed` 且候选区为空时才删除 plan；候选区非空时保留 plan 并在输出注明。
 - plan 尾部 `## 候选（未入库）` 列表区块存放本次未入选的来源；候选区不参与进度检查、恢复与重试，行格式为列表而非表格。
 - 当前药品内已完整索引的重复来源静默跳过；其他药品中的相同来源不参与匹配，也不构成歧义。
 - 续跑从当前持久状态恢复，不覆盖已有产物，不把未完成项整体重新提取。
@@ -53,7 +53,7 @@ python "{clinical_research_dir}/drug-build/scripts/check_plan_progress.py" --con
 | `未提取` | `unextracted` | 当前 `raw_dir` 无该 canonical source | `multi-extractor` 一次性处理该组 canonical source；内部完成提取、验证和部分索引 | 同动作精确重试一次 |
 | `已提取未生成summary` | `raw-only` | 当前药品内唯一 raw、无 summary | `batch-extractor` 使用 `single_raw` 模式接收唯一 raw 绝对路径；禁止目录扫描 | 同动作精确重试一次 |
 | `未审核` 或审核 pending/failed/incomplete | `pending/failed audit` | raw/summary 唯一，但未通过完整审核门禁 | `data-verify` 逐项接收唯一 summary 绝对路径；通过后立即交 `clinical-indexer` 部分模式，未通过则保留 plan | 同动作精确重试一次；通过后部分索引 |
-| `已验证未索引` | `verified-unindexed` | 审核通过，但药品页、任一应建适应症页或根索引有缺口 | `clinical-indexer` 接收明确 summary 绝对路径列表执行部分模式；不得扩展扫描 | 同动作精确重试一次 |
+| `已验证未索引` | `verified-unindexed` | 审核通过，但 clinical-indexer 尚未返回药品页、任一应建适应症页或根索引完整结果 | `clinical-indexer` 接收明确 summary 绝对路径列表执行部分模式；不得扩展扫描；等待其逐目标状态 | 同动作精确重试一次 |
 | `已完成` | `fully indexed` | 审核和全部索引维度完整 | 跳过 | 不重试，完成 |
 | `来源对应多个raw`、`一个raw对应多个summary`、`summary文件名不匹配`，或字段/路径冲突、错误索引引用、目标不唯一 | `ambiguity/manual` | 仅指当前公司级布局内歧义 | 不自动恢复；保留 plan，报告人工处理 | 不重试 |
 | raw frontmatter、summary 来源链接或 managed 索引结构损坏 | `数据完整性错误` | 持久数据结构损坏 | 停止自动恢复；报告具体文件并保留 plan，禁止按“未提取”重抓 | 不重试 |
@@ -127,7 +127,7 @@ plan 表进度：
 
 #### 5.4 恢复
 
-按唯一规范状态表分组执行精确动作。所有子 skill 接收完整 identity/path context 原对象。收集每项 raw/summary、审核门禁、药品页、逐适应症页和根索引结果；任何已有文件不得因续跑被覆盖。multi-extractor 返回 `无数据跳过` 的来源：主表行移入 `## 候选（未入库）` 区块，行尾注明“无临床数据，已跳过”，不重试、不计失败。
+按唯一规范状态表分组执行精确动作。所有子 skill 接收完整 identity/path context 原对象。收集每项 raw/summary、审核门禁、药品页、逐适应症页和根索引结果；任何已有文件不得因续跑被覆盖。multi-extractor 返回 `无数据跳过` 的来源：主表行移入 `## 候选（未入库）` 区块，行尾注明“无临床数据，已跳过”，不重试、不计失败。clinical-indexer 必须返回 `drug_page`、`indication_pages`、`root_index` 三项状态；三项均完成后才将该项视为 fully indexed。
 
 ### 6. 复查与单次重试
 
@@ -157,8 +157,9 @@ plan 表进度：
 ## 输出
 
 ```text
-drug-build 完成：
+drug-build 结果：
 - 药品: {drug_id} ({drug})
+- overall_status: completed / verified_unindexed / blocked
 - 别名全集: {列表}
 - 管线表: {drug_page}（CTG 试验 N 个）
 - plan 表: 已删除（全部 fully indexed 且无候选）/ "{plan_path}"（未完成，保留 M 行；候选未入库 K 条）

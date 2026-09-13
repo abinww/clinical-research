@@ -22,6 +22,7 @@ description: |
 ## 不变量与写边界
 
 - 每个来源只生成一对同名 raw/summary；一个 summary 可包含多个适应症，不拆文件。
+- 每个来源必须按固定状态推进：`identified` → `extracted` → `summarized` → `verified` → `indexed` → `completed`；状态由执行该步骤的现有 skill 在动作成功后直接返回，不另起验证 agent。
 - URL 使用用户准确提供或明确采用的 canonical final URL；PDF 先按大小分流确定 canonical source：`<= 10 MiB` 用附件绝对路径 `{research_dir}/attachments/{drug_id}@{source_label}.pdf`，`> 10 MiB` 用原 PDF 的 `Path.resolve(strict=True).as_posix()`。准确重复键仅为当前公司布局中的 `(company_id, drug_id, source)`，跨药复用不扫描、不跳过、不阻塞、不替换。
 - 不接受或生成 v1 目录、`drug@indication@source` 命名或 raw wikilink。
 - 普通提取只写不存在的正式目标；replacement 必须 staging-first、验证通过后原子提交，绝不 delete-first。
@@ -52,19 +53,20 @@ python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" -
 4. **分配标签与检查来源。** URL 做轻量可达性检查，失败时尝试官方同文镜像；若改用镜像或重定向 final URL，持久化和比较统一使用选定字符串。PDF 不在预检重复提取；`<= 10 MiB` 的来源 PDF 先确定 `source_label`，再按 `scripts/attach_pdf.py` 复制为 `attachments/{drug_id}@{source_label}.pdf` 并以此为 canonical source。按 summary-spec 分配药品内唯一、稳定的 `source_label`；冲突用 `_TrialABC`、`_Abstract1234`、`_FinalAnalysis` 等最短语义后缀，不得用 `_2`、`_3`。
 5. **按来源提取。** 每个来源派发一个隔离的 clinical-extractor agent，每轮最多 5 个（或 harness 允许的上限），并注入来源、canonical source、`config_path`、`source_label` 及完整 drug-identity 对象；普通提取传正式写目录，replacement 传 staging 目录。要求只写指定 create-only 目标。`<= 10 MiB` PDF 传入附件后的绝对路径作为 canonical source。
 6. **核对与重试。** 用 harness 文件工具确认返回的 raw/summary 存在、同名、canonical link 正确，且每来源只有一个 summary。失败项携原因重试一次；仍失败则记录，不影响其他来源。返回 `无数据跳过` 的来源计为 skipped，不重试、不计失败，跳过原因写入输出。PDF 图片工具不可用只记警告，不伪造图片，也不因此重复文本提取。
-7. **独立验证。** 只把本轮成功 summary 的明确路径派发给独立 data-verify agent，每轮最多 5 个（或 harness 允许的上限）；从 summary 的 canonical link 解析 raw，并覆盖全部 `indications`。verifier 不联网、不修改正文。`FAIL` 由主编排按证据问题修正文后交给新的独立 verifier；连续两轮仍失败则停止该项。`WARN` 可继续但须列为人工复核项。
-8. **派发索引。** 只将通过 clinical-indexer 完整资格门禁的本轮 summary 以部分模式派发。每个 summary 对药品页只更新一次，并展开全部 `indications` 更新对应适应症页；所有索引项引用同一 summary。索引器不支持多适应症时停止该项并报告，不拆 summary、不退回旧格式。索引失败不回滚已验证的 raw/summary。
+7. **独立验证。** 只把本轮成功 summary 的明确路径派发给独立 data-verify agent，每轮最多 5 个（或 harness 允许的上限）；从 summary 的 canonical link 解析 raw，并覆盖全部 `indications`。verifier 不联网、不修改正文。data-verify 返回 `passed/0/complete` 后，该来源状态推进为 `verified`；`FAIL` 由主编排按证据问题修正文后交给新的独立 verifier；连续两轮仍失败则停止该项。`WARN` 可继续但须列为人工复核项。
+8. **派发索引（不可跳过）。** 只将通过 data-verify 门禁的本轮 summary 以部分模式派发给 clinical-indexer。无论是 URL/PDF 直接提取还是批量建库，data-verify 通过后都不得结束；必须等待 clinical-indexer 返回药品页、全部适应症页和根 `index.md` 三项结果。三项均为 `completed` 时该来源状态推进为 `indexed`，随后由本编排推进为 `completed`；任一项为 `blocked` 或 `incomplete` 时返回对应状态，不得报告完成。索引失败不回滚已验证的 raw/summary。
 
 ## 失败与恢复
 
 - 单项提取或验证失败不阻断其他独立来源；失败项遵守上述重试上限。
 - replacement 的任何歧义或门禁失败都保持正式树不变；提交故障严格按 manifest 恢复，不允许部分替换。
-- 普通索引失败保留已验证 pair 并报告；不得把未索引状态描述为完整成功。
+- 普通索引失败保留已验证 pair 并报告 `verified_unindexed` 或 `blocked`；不得把未索引状态描述为完整成功。multi-extractor 不另起 subagent 复查索引，直接使用 clinical-indexer 的逐目标返回状态。
 
 ## 输出
 
 ```text
 - 输入来源 / 跳过重复 / 无数据跳过 / 成功 / 失败数量
+- 状态流转：`identified` / `extracted` / `summarized` / `verified` / `indexed` / `completed` / `blocked`
 - canonical source 列表；URL 保留值及 PDF 附件/原路径（`<= 10 MiB` 为附件绝对路径，`> 10 MiB` 为 resolved absolute POSIX path）
 - 明确授权替换、run-id、备份的准确 pair、managed index documents、附件处置及 commit/rollback 结果
 - 每个来源唯一的 raw 与 summary 路径
@@ -72,6 +74,9 @@ python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" -
 - PDF 附件（`attachments/{drug_id}@{source_label}.pdf`）及未能渲染的重要图片警告
 - PASS/WARN/FAIL 汇总与人工复核项
 - clinical-indexer 门禁合格/不合格数量及原因
-- drug 索引和逐适应症索引结果
+- drug_page: completed / incomplete / blocked
+- indication_pages: completed / incomplete / blocked
+- root_index: completed / incomplete / blocked
+- overall_status: completed / verified_unindexed / blocked
 - 失败项及原因
 ```
