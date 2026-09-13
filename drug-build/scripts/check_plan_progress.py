@@ -137,14 +137,30 @@ def _contains_source_identity(path: Path, identity: str, research_dir: Path) -> 
         return False
 
 
-def _contains_drug_summary_link(path: Path, filename: str) -> bool:
+def _contains_drug_summary_link(path: Path, filename: str, indication_id: str) -> bool:
     if not path.is_file():
         return False
     try:
         text = path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError):
         return False
-    return text.count(f"](summary/{filename})") == 1
+    section_heading = re.compile(
+        rf"^###\s+\[{re.escape(indication_id)}\]\s+.+?\s*$", re.MULTILINE
+    )
+    top_heading = re.compile(r"^##\s+.+?$", re.MULTILINE)
+    summary_heading = re.search(r"^##\s+临床数据汇总\s*$", text, re.MULTILINE)
+    if summary_heading is None:
+        return False
+    summary_end = top_heading.search(text, summary_heading.end())
+    summary_section = text[summary_heading.end() : summary_end.start() if summary_end else len(text)]
+    matches = list(section_heading.finditer(summary_section))
+    if len(matches) != 1:
+        return False
+    section_end_match = re.search(r"^###\s+|^##\s+", summary_section[matches[0].end() :], re.MULTILINE)
+    section = summary_section[
+        matches[0].end() : matches[0].end() + (section_end_match.start() if section_end_match else len(summary_section))
+    ]
+    return section.count(f"](summary/{filename})") == 1
 
 
 def _managed_region(text: str, name: str) -> str | None:
@@ -185,8 +201,6 @@ def _indexed_for_summary(research_dir: Path, summary: Path, summary_text: str) -
     drug_id = summary.name.split("@", 1)[0]
     drug_page = company_dir / f"{drug_id}.md"
     index = research_dir / "index.md"
-    if not _contains_drug_summary_link(drug_page, summary.name):
-        return False
     drug_target = persistent_path(drug_page, research_dir)
     if not _contains_managed_wikilink(index, "drugs", drug_target):
         return False
@@ -197,6 +211,8 @@ def _indexed_for_summary(research_dir: Path, summary: Path, summary_text: str) -
     if not indications:
         return False
     for indication_id, display in indications:
+        if not _contains_drug_summary_link(drug_page, summary.name, indication_id):
+            return False
         if display in GENERIC_INDICATIONS:
             continue
         page = research_dir / "indication" / f"{indication_id}.md"

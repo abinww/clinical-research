@@ -88,7 +88,10 @@ class CheckPlanProgressTests(unittest.TestCase):
 
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已验证未索引")
             (drug / "药甲.md").write_text(
-                "> 来源: [药甲@Trial](summary/药甲@Trial.md)\n", encoding="utf-8"
+                "## 临床数据汇总\n\n"
+                "### [NSCLC_1L] NSCLC 一线\n\n"
+                "> 来源: [药甲@Trial](summary/药甲@Trial.md)\n",
+                encoding="utf-8",
             )
             index = root / "index.md"
             index.write_text(
@@ -111,6 +114,53 @@ class CheckPlanProgressTests(unittest.TestCase):
             indication.unlink()
             self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已验证未索引")
             self.assertEqual(progress.check_url(root, "https://example.test/missing"), "未提取")
+
+    def test_indexed_summary_link_must_be_in_matching_indication_section(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            drug = make_drug(root, "公司甲", "药甲")
+            raw = drug / "raw" / "药甲@Trial.md"
+            raw.write_text("---\nsource: https://example.test/trial\n---\n", encoding="utf-8-sig")
+            summary = drug / "summary" / "药甲@Trial.md"
+            summary.write_text(
+                "---\ndrug_id: 药甲\nsource_label: Trial\narchive_company: 公司甲\n"
+                "verification: passed\nverification_fail_count: 0\nverification_coverage: complete\n"
+                "indications: [NSCLC_1L]\n---\n"
+                "> 来源原文: [试验](../raw/药甲@Trial.md)\n"
+                "## [NSCLC_1L] NSCLC 一线\n\n### 核心数据\n\n"
+                "## 数据一致性审核\n\n| indication_id | 数据项 | 状态 |\n|---|---|---|\n"
+                "| NSCLC_1L | ORR | PASS |\n",
+                encoding="utf-8-sig",
+            )
+            (drug / "药甲.md").write_text(
+                "## 临床数据汇总\n\n"
+                "### [NSCLC_1L] NSCLC 一线\n\n"
+                "> 尚未写入来源\n\n"
+                "## 药品专利\n\n"
+                "> 来源: [药甲@Trial](summary/药甲@Trial.md)\n",
+                encoding="utf-8",
+            )
+            indication = root / "indication" / "NSCLC_1L.md"
+            indication.parent.mkdir()
+            indication.write_text(
+                "<!-- source_identity: 公司甲/summary/药甲@Trial.md -->\n", encoding="utf-8"
+            )
+            index = root / "index.md"
+            index.write_text(
+                "## 药品\n<!-- clinical-research:begin drugs -->\n\n"
+                "| 归档公司 | drug_id | 通用名 | aliases | 靶点 |\n|---|---|---|---|---|\n"
+                "| 公司甲 | [[公司甲/药甲.md\\|药甲]] | 药甲 | — | — |\n"
+                "<!-- clinical-research:end drugs -->\n"
+                "## 适应症\n<!-- clinical-research:begin indications -->\n\n"
+                "| 适应症 | 类别 | 治疗线 | 生物标志物 | 更新 |\n|---|---|---|---|---|\n"
+                "| [[indication/NSCLC_1L.md\\|NSCLC 一线]] | NSCLC | 1L | — | 2026-01-01 |\n"
+                "<!-- clinical-research:end indications -->\n",
+                encoding="utf-8",
+            )
+            summary_text = summary.read_text(encoding="utf-8-sig")
+            self.assertTrue(progress.summary_identity_valid(summary_text, summary))
+            self.assertTrue(progress.summary_audit_passed(summary_text))
+            self.assertEqual(progress.check_url(root, "https://example.test/trial"), "已验证未索引")
 
     def test_requires_exactly_one_summary_and_passed_verification(self):
         with tempfile.TemporaryDirectory() as temporary:

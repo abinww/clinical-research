@@ -48,7 +48,7 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 
 | 规则 | 药品页 | 适应症页 | 根 `index.md` |
 |---|---|---|---|
-| 写入范围 | 每个 summary 一个来源块；按 indications、trial identity、披露时间组织，保留全部适应症归属 | 每个 indication 按阶段分表（Phase III/Phase II），每药每阶段一条最优记录；安全性每药一行取最新阶段；被替换来源写入时间线 | 仅对应 managed markers 内当前主键行 |
+| 写入范围 | 每个 summary 一个来源块；按 indications、trial identity、披露时间组织，保留全部适应症归属 | 每个 summary 按 `indication_id` 定位到药品页对应 `### [{indication_id}]` 章节；来源块不得越出 `## 临床数据汇总`；适应症页按阶段分表（Phase III/Phase II） | 仅对应 managed markers 内当前主键行 |
 | 来源标记 | 药品页不写 `source_identity` 注释，以 `> 来源: [...](summary/{file}.md)` 相对链接为唯一来源身份，恰好一次 | 适应症页每个来源 `source_identity` 集中置于 `## 数据对比表` 标题之后，恰好一次 | 不复制来源块，以 managed 药品/适应症表链接验证完整性 |
 | 链接 | 药品页来源只使用相对路径 `summary/{file}.md`，不链接 raw | summary 和药品使用完整 vault 路径 wikilink；表行来源逐行引用对应 summary | 药品和适应症使用完整 vault 路径 wikilink |
 | wikilink pipe | 表内 alias `|` 写为 `\|`，表外用普通 `|`；解析时等价 | 同左 | 同左 |
@@ -134,10 +134,10 @@ source_identity = {company_id}/summary/{filename}.md
 
 按稳定顺序逐项处理：
 
-1. 按写策略更新唯一药品页。路径必须来自已验证公司布局；药品页缺失是身份错误，只有索引漏项由预协调修复。一个 summary 无论含多少 indications，只归档一次；直接保留 schema 要求的有效性与安全性，不虚构字段。
+1. 按写策略更新唯一药品页。路径必须来自已验证公司布局；药品页缺失是身份错误，只有索引漏项由预协调修复。一个 summary 无论含多少 indications，只归档一次；对每个 `indication_id`，先在 `## 临床数据汇总` 下精确定位或创建唯一的 `### [{indication_id}] {显示名}` 章节，再把来源块写入该章节；禁止追加到文件末尾或其他顶级章节。直接保留 schema 要求的有效性与安全性，不虚构字段。
 2. 药品页写入失败时记录并停止该 summary；其他 summary 不回滚。
 3. 按稳定 indication identity 顺序处理每项。schema 明确排除建档的探索性泛瘤种记录跳过，药品页归档仍有效。
-4. 按 indication schema 更新适应症页：按来源披露阶段归入 `Phase III`/`Phase II` 子表（Phase I 疗效不进表；Phase I/II 合并且人数足够按 Phase II 处理）；同一阶段同药多来源按 详细/最终 > 预披露/期中 → 截止最新 选一条写入，被替换来源移入 `数据时间线`；安全性表每药一行取最新阶段。每个适应症页成功创建/更新并重读验证后，立即重读根索引并 upsert 该 `indication_id` 行；失败则不更新其索引行，记录后继续其他 indication。
+4. 按 indication schema 更新适应症页：按来源披露阶段归入 `Phase III`/`Phase II` 子表（Phase I 疗效不进表；Phase I/II 合并且人数足够按 Phase II 处理）；同一阶段同药多来源按 详细/最终 > 预披露/期中 → 截止最新 选一条写入，被替换来源移入 `数据时间线`；安全性表每药一行取最新阶段。每个适应症页成功创建/更新并重读根索引后，立即 upsert 该 `indication_id` 行；失败则不更新其索引行，记录后继续其他 indication。
 5. 药品页完成后，重读根索引并最小 upsert 当前药品的 `归档公司`、`drug_id`、常用通用名、aliases、`company_id`、药品页完整 vault wikilink，以及 schema 要求且可由已验证内容确定的信息；随后药品表按 `归档公司` 升序、同公司内按 `drug_id` 升序确定性重排。公司 aliases 和所有权规则仍集中保存。
 6. 适应症失败不撤销已成功的药品或其他适应症 upsert，但 summary 必须标为未完整归档。当前根条目已完整且无新信息时不写文件。
 
