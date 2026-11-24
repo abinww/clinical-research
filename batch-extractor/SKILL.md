@@ -38,10 +38,12 @@ python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_pat
 
 2. **建立上下文。** 脚本返回 `{company_id}/raw/{drug_id}@{source_label}.md`。使用 `pathlib`/harness 解析路径组件，并派生公司级 `company_dir`、`drug_page`、`raw_dir`、`summary_dir`、同名 `summary_file` 和根 `attachments_dir`。
 3. **校验身份。** 写入前读取根 `index.md`，用 `drug_id`、别名和完整 vault 路径联合确认恰好一个条目映射到 `{company_id}/{drug_id}.md`。读取药品页构造标准身份对象，必要时调用 drug-identity `resolve_only` 校验；不得从 raw 猜测身份。`companies` 如存在必须与 `company_ids` 相同。
-4. **生成 summary。** 读取 raw，按 summary-spec 创建唯一 `summary_file`。只纳入 raw 支持的全部适应症和试验事实，保持分组与 canonical 相对来源链接准确，不得串组或推断。
-5. **处理 PDF 图片。** URL 图保持远程链接。已有 raw 对应 PDF 且缺少关键图时，可用 harness/PDF 工具优先裁剪、否则保存整页到 `{research_dir}/attachments/`，并从 summary 以 `../../../attachments/{file}` 引用。工具不可用时继续文本 summary，报告原因，不伪造附件。
+4. **生成 summary 并审计 URL 图片。** 读取 raw，按 summary-spec 创建唯一 `summary_file`。只纳入 raw 支持的全部适应症和试验事实，保持分组与 canonical 相对来源链接准确，不得串组或推断。URL 来源不得重新抓取或访问来源页面；只使用 raw 中实际保留、可核实的正文图片 URL/图注按 summary-spec 盘点并写入 summary。raw 未包含足以核实完整图片清单的 URL/元数据时，不能据此判定“无图片”；在 summary 中说明清单无法核实，回报 `image_status: incomplete`。
+5. **处理 PDF 图片。** 已有 raw 对应 PDF 且缺少关键图时，可用 harness/PDF 工具优先裁剪、否则保存整页到 `{research_dir}/attachments/`，并从 summary 以 `../../attachments/{file}` 引用。工具不可用或渲染失败时继续文本 summary，但不得伪造附件；列出图号/表号及原因，并将图片审计标记为 `incomplete`。
 6. **独立验证。** 每个新 summary 交给不同于生成者的 data-verify agent。verifier 从相对链接解析 raw，确认其为当前 `raw_dir` 的直接文件，并覆盖全部适应症分节。有 `FAIL` 时按问题修正文后交给新的独立 verifier；仍失败则不索引。保留并报告 `WARN`。
 7. **派发索引。** 仅将通过 clinical-indexer 完整资格门禁的 summary 以部分模式派发。每份 summary 对 drug page 归档一次，再按全部 `indications` 更新适应症页。索引器不支持多适应症时报告不兼容，不拆 summary、不退回 v1。
+
+任一 summary 的 `image_status` 为 `incomplete` 时，即使数据审核和索引成功，批次也必须报告 `overall_status: completed_with_image_warning`，不能报告无警告的 `completed`；图片为 `complete` 或经完整盘点确认为 `none` 才满足图片完成状态。若验证或索引存在阻断错误，`blocked` 优先于图片警告状态。
 
 可按来源并行生成，但每个 worker 必须获得该 raw 的完整 identity/path context，且写入目标互不重叠。
 
@@ -60,7 +62,10 @@ python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_pat
 - 成功 / 失败 / 跳过: X / Y / Z
 - raw -> summary: {逐项路径}
 - indications: {逐 summary 数组}
+- image_status: {逐 summary 的 complete / none / incomplete 及审计原因}
+- image_audit: {逐 summary 的 include / exclude / unresolved 项与数量}
 - verification: {PASS/WARN/FAIL 汇总}
 - attachments/warnings: {PDF 图片与不可用原因}
 - indexing: {drug 与逐适应症结果}
+- overall_status: completed / completed_with_image_warning / verified_unindexed / blocked
 ```
