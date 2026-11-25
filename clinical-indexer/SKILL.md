@@ -48,11 +48,11 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 
 | 规则 | 药品页 | 适应症页 | 根 `index.md` |
 |---|---|---|---|
-| 写入范围 | 每个 summary 一个来源块；按 indications、trial identity、披露时间组织，保留全部适应症归属 | 每个 summary 按 `indication_id` 定位到药品页对应 `### [{indication_id}]` 章节；来源块不得越出 `## 临床数据汇总`；适应症页按阶段分表（Phase III/Phase II） | 仅对应 managed markers 内当前主键行 |
-| 来源标记 | 药品页不写 `source_identity` 注释，以 `> 来源: [...](summary/{file}.md)` 相对链接为唯一来源身份，恰好一次 | 适应症页每个来源 `source_identity` 集中置于 `## 数据对比表` 标题之后，恰好一次 | 不复制来源块，以 managed 药品/适应症表链接验证完整性 |
+| 写入范围 | 每个 summary 按 indications、trial identity、披露时间组织，保留全部适应症归属；仅嵌入含有效性数据的主表 | 每个 summary 按 `indication_id` 定位到药品页对应 `### [{indication_id}]` 章节；来源块不得越出 `## 临床数据汇总`；适应症页按阶段分表（Phase III/Phase II） | 仅对应 managed markers 内当前主键行 |
+| 来源标记 | 药品页不写 `source_identity` 注释；每个适应症组对该 summary 的相对来源链接恰好一次，多适应症 summary 可在各组分别出现 | 适应症页每个来源 `source_identity` 集中置于 `## 数据对比表` 标题之后，恰好一次 | 不复制来源块，以 managed 药品/适应症表链接验证完整性 |
 | 链接 | 药品页来源只使用相对路径 `summary/{file}.md`，不链接 raw | summary 和药品使用完整 vault 路径 wikilink；表行来源逐行引用对应 summary | 药品和适应症使用完整 vault 路径 wikilink |
 | wikilink pipe | 表内 alias `|` 写为 `\|`，表外用普通 `|`；解析时等价 | 同左 | 同左 |
-| 保留内容 | 保留章节、未知 frontmatter、人工注释和手工排序 | 保留未知字段、人工内容和手工排序；被替换的旧来源保留在数据时间线 | 保留用户段落、注释、自定义列/单元格、既有行顺序和无关格式 |
+| 保留内容 | 保留规范章节、未知 frontmatter、人工注释和手工排序；不得新建 `备注`、`待补`、`待核` 等独立小节，人工修订应写入对应规范章节 | 保留未知字段、人工内容和手工排序；被替换的旧来源保留在数据时间线 | 保留用户段落、注释、自定义列/单元格、既有行顺序和无关格式 |
 | 合并与冲突 | 相同来源不重复；只补 schema 明确缺失内容；同 cohort/指标/披露时间冲突时并列保留来源并标记“数据差异待人工确认” | 相同来源不重复；同一阶段同药多来源按 indication schema 选优，冲突保留双方并标记待人工确认 | 按主键最小合并，等价条目/alias/链接不重复；公司或链接变化视为冲突，不覆盖或迁移 |
 | 新建/排序 | 不在未知位置新建第二个药品页 | 不存在时按 indication schema 创建；Phase I 纯安全性不进对比表 | 新行按本轮稳定顺序追加；仅新初始化或 pristine 空表可整体排序 |
 | 并发保护 | 写前重读并复查来源身份 | 写前重读并复查来源身份，写后验证 | 每次 upsert 前重读；不得并行写 Markdown 索引文件 |
@@ -63,7 +63,7 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 
 | 目标 | 每个合格 summary 的期望状态 | 失败影响 |
 |---|---|---|
-| 药品页 `{research_dir}/{company_id}/{drug_id}.md` | 来源的 `summary/{filename}.md` 相对链接恰好一次，返回 `drug_page: completed` | 返回 `drug_page: blocked/incomplete`，不把本 summary 报为 indexed |
+| 药品页 `{research_dir}/{company_id}/{drug_id}.md` | summary 在其覆盖的每个适应症组各有一个 `summary/{filename}.md` 相对链接；写后结构校验不为 `fail`，返回 `drug_page: completed` | `drug_page_schema: fail` 或写入冲突时返回 `drug_page: blocked/incomplete`，不把本 summary 报为 indexed |
 | 每个非 schema 排除的 `{research_dir}/indication/{indication_id}.md` | 同一规范来源身份恰好一次，返回 `indication_pages: completed` | 返回具体 indication 失败状态，summary 报为未完整归档 |
 | 根药品表 | `drug_id`、通用名、aliases 唯一链接正确药品页，属于 `root_index` 结果 | 返回 `root_index: blocked/incomplete` |
 | 根适应症表 | 仅在对应页面成功写入后 upsert，属于 `root_index` 结果 | 不创建或更新失败页面的索引行 |
@@ -128,14 +128,21 @@ source_identity = {company_id}/summary/{filename}.md
 <!-- source_identity: {company_id}/summary/{filename}.md -->
 ```
 
-同一适应症页中该 identity 必须恰好一次（表格与时间线的 summary wikilink 可多次出现，注释才是机器键）。药品页不写 `source_identity` 注释：每个来源块以 `> 来源: [{label}](summary/{filename}.md)` 相对链接为唯一来源身份，同一链接在本页恰好一次，且不得出现 raw 链接。`company_id` 和药品链接以预协调后的根索引为准；summary 路径不一致时记录冲突，不移动文件或改写归属。独立检查目标矩阵各维度；来源位于错误药品页或适应症页时，不视为已归档，也不自动删除。
+同一适应症页中该 identity 必须恰好一次（表格与时间线的 summary wikilink 可多次出现，注释才是机器键）。药品页不写 `source_identity` 注释：每个来源块以 `> 来源: [{label}](summary/{filename}.md)` 相对链接为来源身份；同一 summary 在其覆盖的每个适应症组恰好一次，多适应症来源允许在不同组各出现一次，且不得出现 raw 链接。`company_id` 和药品链接以预协调后的根索引为准；summary 路径不一致时记录冲突，不移动文件或改写归属。独立检查目标矩阵各维度；来源位于错误药品页或适应症页时，不视为已归档，也不自动删除。
 
 ### 4. 串行更新每个 summary
 
 按稳定顺序逐项处理：
 
-1. 按写策略更新唯一药品页。路径必须来自已验证公司布局；药品页缺失是身份错误，只有索引漏项由预协调修复。一个 summary 无论含多少 indications，只归档一次；对每个 `indication_id`，先在 `## 临床数据汇总` 下精确定位或创建唯一的 `### [{indication_id}] {显示名}` 章节，再把来源块写入该章节；禁止追加到文件末尾或其他顶级章节。直接保留 schema 要求的有效性与安全性，不虚构字段。
-2. 药品页写入失败时记录并停止该 summary；其他 summary 不回滚。
+1. 按写策略更新唯一药品页。路径必须来自已验证公司布局；药品页缺失是身份错误，只有索引漏项由预协调修复。一个 summary 文件不拆分或重复归档；以 `(summary path, indication_id)` 为药品页来源块去重键。对每个 `indication_id`，先在 `## 临床数据汇总` 下精确定位或创建唯一的 `### [{indication_id}] {显示名}` 章节，再把该组来源块写入其中；禁止追加到文件末尾或其他顶级章节。仅嵌入该适应症的有效性主表；无有效性主表时保留来源链接，不复制纯安全性或亚组表。直接保留 schema 要求的数据，不虚构字段。
+   写后对当前 drug page 运行只读结构校验：
+
+   ```text
+   python "{clinical_research_dir}/scripts/check_drug_page.py" --drug-page "{drug_page}" --summary "{summary_path}"
+   ```
+
+   对同一药品本轮处理多个 summary 时，为每个路径重复传入 `--summary`。脚本检查 frontmatter、章节、适应症分组、summary 来源链接及有效性主表结构；summary 数值仍由独立 data-verify 审核，脚本不重复判断。`WARN` 记录但不阻断归档；`FAIL` 返回 `drug_page_schema: fail`，并将该 summary 记为未完整归档。
+2. 药品页写入失败或结构校验为 `fail` 时记录并停止该 summary；`warn` 记录后继续；其他 summary 不回滚。
 3. 按稳定 indication identity 顺序处理每项。schema 明确排除建档的探索性泛瘤种记录跳过，药品页归档仍有效。
 4. 按 indication schema 更新适应症页：按来源披露阶段归入 `Phase III`/`Phase II` 子表（Phase I 疗效不进表；Phase I/II 合并且人数足够按 Phase II 处理）；同一阶段同药多来源按 详细/最终 > 预披露/期中 → 截止最新 选一条写入，被替换来源移入 `数据时间线`；安全性表每药一行取最新阶段。每个适应症页成功创建/更新并重读根索引后，立即 upsert 该 `indication_id` 行；失败则不更新其索引行，记录后继续其他 indication。
 5. 药品页完成后，重读根索引并最小 upsert 当前药品的 `归档公司`、`drug_id`、常用通用名、aliases、`company_id`、药品页完整 vault wikilink，以及 schema 要求且可由已验证内容确定的信息；随后药品表按 `归档公司` 升序、同公司内按 `drug_id` 升序确定性重排。公司 aliases 和所有权规则仍集中保存。
@@ -143,7 +150,7 @@ source_identity = {company_id}/summary/{filename}.md
 
 ### 5. 返回状态与幂等性
 
-每个写入动作完成后直接记录对应目标状态，不另起 verifier 或 subagent。成功写入药品页后返回 `drug_page: completed`；全部应建适应症页成功后返回 `indication_pages: completed`；根索引药品表和适应症表成功后返回 `root_index: completed`。任一写入或结构冲突失败则返回具体目标的 `incomplete` 或 `blocked`，不得把部分成功汇总为 indexed。重复运行仍须幂等：不新增数据块、链接、aliases 或页面；药品表按 `归档公司`+`drug_id` 确定性重排，适应症表自定义列/单元格与既有行序未改变。
+每个写入动作完成后直接记录对应目标状态，不另起 verifier 或 subagent。药品页通过写后检查时返回 `drug_page_schema: pass`；仅有非阻断提示时返回 `warn` 并保留警告；结构失败返回 `fail`、`drug_page: incomplete`，且不得把本 summary 报为 indexed。全部应建适应症页成功后返回 `indication_pages: completed`；根索引药品表和适应症表成功后返回 `root_index: completed`。只有 `drug_page_schema` 不是 `fail` 且三个目标状态均完成，才可报告 `overall_status: indexed`。重复运行仍须幂等：不新增数据块、链接、aliases 或页面；药品表按 `归档公司`+`drug_id` 确定性重排，适应症表自定义列/单元格与既有行序未改变。
 
 ## 失败与恢复
 
@@ -161,6 +168,7 @@ clinical-indexer 2.0 增量归档结果：
 合格: A
 跳过: B
 drug_page: completed / incomplete / blocked
+drug_page_schema: pass / warn / fail
 indication_pages: completed / incomplete / blocked
 root_index: completed / incomplete / blocked
 overall_status: indexed / blocked / incomplete

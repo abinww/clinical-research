@@ -11,6 +11,8 @@ description: |
 
 本 skill 是 URL/PDF 提取的唯一编排入口，负责身份、去重、单来源提取、独立验证和索引派发。`clinical-extractor` 永远 create-only；只有本编排层可在用户明确授权后替换准确重复来源。提取 agent 和主编排 agent 均不得代替独立 verifier 判定通过。
 
+药品页的临床结构化内容只由 `clinical-indexer` 创建或更新。主编排层可以调用 `drug-identity` 创建身份骨架，但不得自行写入或改写药品页中的临床数值、要点、里程碑或来源块；验证通过后必须按第 8 步派发索引。
+
 ## 输入与共享契约
 
 - 配置只读取绝对 `research_dir`。身份和完整路径上下文以 `../drug-identity/SKILL.md` 的标准对象为权威；已有完整对象则校验后使用，否则以 `mode: resolve_or_create` 调用该 skill。
@@ -54,7 +56,7 @@ python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" -
 5. **按来源提取。** 每个来源派发一个隔离的 clinical-extractor agent，每轮最多 5 个（或 harness 允许的上限），并注入来源、canonical source、`config_path`、`source_label` 及完整 drug-identity 对象；普通提取传正式写目录，replacement 传 staging 目录。要求只写指定 create-only 目标，并返回逐项 `image_audit` 和 `image_status`；`<= 10 MiB` PDF 传入附件后的绝对路径作为 canonical source。
 6. **核对与重试。** 用 harness 文件工具确认返回的 raw/summary 存在、同名、canonical link 正确，且每来源只有一个 summary；逐项确认 image audit 中的 `include` 均以正确远程 URL/实际 PDF 附件出现在正确适应症分组，`none` 必须有完成盘点的依据。普通提取尚未创建 pair 且步骤失败时可携原因重试一次；若 pair 已创建但图片审计缺失、状态与内容不一致或计数不匹配，遵守 extractor 的 create-only 边界，不得对正式目标自动重跑、覆盖或删除，保留 pair 并记录为 `image_status: incomplete`。来源访问受限或图片工具失败时，继续独立数据验证及符合门禁时的索引，但最终不得报告为无警告的 `completed`，应使用 `completed_with_image_warning` 并列明未解决图号/表号及原因。需要修复已存在的 pair 时，只能走用户明确授权的 replacement 事务。返回 `无数据跳过` 的来源计为 skipped，不重试、不计失败，跳过原因写入输出。图片失败不伪造图片，也不因此重复文本提取。
 7. **独立验证。** 只把本轮成功 summary 的明确路径派发给独立 data-verify agent，每轮最多 5 个（或 harness 允许的上限）；从 summary 的 canonical link 解析 raw，并覆盖全部 `indications`。verifier 不联网、不修改正文。data-verify 返回 `passed/0/complete` 后，该来源状态推进为 `verified`；`FAIL` 由主编排按证据问题修正文后交给新的独立 verifier；连续两轮仍失败则停止该项。`WARN` 可继续但须列为人工复核项。
-8. **派发索引（不可跳过）。** 只将通过 data-verify 门禁的本轮 summary 以部分模式派发给 clinical-indexer。无论是 URL/PDF 直接提取还是批量建库，data-verify 通过后都不得结束；必须等待 clinical-indexer 返回药品页、全部适应症页和根 `index.md` 三项结果。三项均为 `completed` 时该来源状态推进为 `indexed`；图片 `complete/none` 时由本编排推进为 `completed`，图片 `incomplete` 时推进为 `completed_with_image_warning`，同时保留图像待补警告。任一索引项为 `blocked` 或 `incomplete` 时返回对应索引状态，不得报告完成。索引失败不回滚已验证的 raw/summary。
+8. **派发索引（不可跳过）。** 只将通过 data-verify 门禁的本轮 summary 以部分模式派发给 clinical-indexer。无论是 URL/PDF 直接提取还是批量建库，data-verify 通过后都不得结束；必须等待 clinical-indexer 返回药品页、药品页结构校验、全部适应症页和根 `index.md` 结果。`drug_page_schema: fail` 时该来源不得推进为 `indexed`；`warn` 必须报告，但不单独阻断。药品页、全部适应症页和根索引均为 `completed` 且结构校验无 `fail` 时，该来源状态才推进为 `indexed`；图片 `complete/none` 时由本编排推进为 `completed`，图片 `incomplete` 时推进为 `completed_with_image_warning`，同时保留图像待补警告。任一索引项为 `blocked` 或 `incomplete` 时返回对应索引状态，不得报告完成。索引失败不回滚已验证的 raw/summary。
 
 ## 失败与恢复
 
@@ -76,6 +78,7 @@ python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" -
 - PASS/WARN/FAIL 汇总与人工复核项
 - clinical-indexer 门禁合格/不合格数量及原因
 - drug_page: completed / incomplete / blocked
+- drug_page_schema: pass / warn / fail（warn 不单独阻断 indexed；fail 阻断）
 - indication_pages: completed / incomplete / blocked
 - root_index: completed / incomplete / blocked
 - overall_status: completed / completed_with_image_warning / verified_unindexed / blocked

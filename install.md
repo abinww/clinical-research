@@ -134,6 +134,7 @@ python --version
 {skill_root}/clinical-research/data-verify/
 {skill_root}/clinical-research/drug-build/
 {skill_root}/clinical-research/drug-build/scripts/check_plan_progress.py
+{skill_root}/clinical-research/scripts/check_drug_page.py
 {skill_root}/clinical-research/clinical-trial-evaluator/
 ```
 

@@ -118,6 +118,8 @@ summary_dir = {company_dir}/summary
 
 身份和归档公司确认后，创建或补齐 `company_dir`、`drug_page`、`raw_dir` 和 `summary_dir`。药品页不存在时按当前 2.0 drug schema 创建最小骨架，仅写已确认身份字段；存在时保留人工内容，仅补缺失身份字段和新确认 aliases。冲突不覆盖，改为记录并询问。
 
+新建骨架只包含 frontmatter 和 `## 基本信息`；其他规范章节只留空标题。`resolve_or_create` 不得写入临床数值、疗效要点、关键里程碑或其他临床章节内容。已有页面缺少 frontmatter 时，只能补入已确认的身份字段，保留原正文；不得借补身份之名改写临床正文。
+
 ### 6. 串行更新根索引（仅 `resolve_or_create`）
 
 布局成功后重读 `{research_dir}/index.md` 并复查冲突，再最小更新：新药新增可由 `drug_id`、通用名和任一 alias 命中的条目；记录规范 `company_id`；药品链接固定为完整 vault 路径 `[[{company_id}/{drug_id}.md|{drug_id}]]`，不得添加 `research/` 或 `company/` 前缀；公司 aliases 和所有权规则写入集中区域。等价条目合并缺失信息，不重复追加，不重排无关内容，不迁移既有目录。
