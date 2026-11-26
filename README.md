@@ -22,7 +22,7 @@
 | `clinical-indexer/` | 扫描 summary 并更新 `{drug_id}.md`、根 `index.md` 和 `indication/`。 |
 | `drug-trials-search/` | 查询临床试验注册信息并更新 `{drug_id}.md`。 |
 | `drug-patent-search/` | 检索药品或公司专利。 |
-| `data-search/` | 搜索已公布数据来源并返回计划，不写入文件。 |
+| `data-search/` | 先返回候选临床供选择，再为选中试验搜索最佳来源并返回计划，不写入文件。 |
 | `drug-identity/` | 解析规范药品身份、别名、靶点与公司归属。 |
 | `data-verify/` | 对照 raw/来源验证 summary。 |
 | `drug-build/` | 编排查询、搜索、提取、验证和索引。 |

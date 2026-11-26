@@ -52,7 +52,7 @@ class CheckPlanProgressTests(unittest.TestCase):
             plan = Path(temporary) / "plan.md"
             plan.write_text(
                 "# plan\n"
-                "> 来源挑选: 已确认 2026-09-08（选中 2 / 候选 2）\n\n"
+                "> 临床选择: 已确认 2026-09-08（选中 2 / 候选 2）\n\n"
                 "| # | 临床代码或NCT编号 | 适应症 | 临床阶段 | 来源类型 | 数据截止日 | 网址链接 | 备注 |\n"
                 "|---|---|---|---|---|---|---|---|\n"
                 "| 1 | NCT1 | NSCLC | Phase III | journal | 2026-05 | https://example.test/a | — |\n"
