@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """检查 drug-build plan 表的完成进度（纯数据工具，不参与流程控制）。
 
+raw 文件身份以 ../../schema/raw-spec.md 为权威，summary 格式以
+../../schema/summary-spec.md 为权威。
+
 对 plan 表每一行的 URL，按完整状态判断：
 1. 在指定药品（或诊断模式下全库）的公司 raw/ 中按 frontmatter source 定位唯一 raw
 2. 在公司 summary/ 中按规范相对 Markdown 链接定位唯一 summary

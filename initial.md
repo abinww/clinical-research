@@ -135,14 +135,13 @@ if not index_path.exists():
 - 查找公司或药品时先查本文件，再访问对应路径。
 - 别名用分号分隔；匹配到多个实体时必须消歧，不得猜测。
 - 归档公司优先选上市主体：所有权链中未上市的运营子公司（如 巨石生物）不单独作为归档公司或新增公司行，其名称并入所属上市主体（如 石药创新）的 aliases。
-- 用户提交的 `<= 10 MiB` 来源 PDF 存入根 `attachments/{drug_id}@{source_label}.pdf`，raw 正文只写嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`，不存提取文本；`> 10 MiB` 的 PDF 维持文本提取进 raw。
 - 创建药品时在 drugs markers 内补充药品行；`归档公司` 是第一列，`drug_id` 列使用完整 vault wikilink `[[{company_id}/{drug_id}.md|{drug_id}]]`，写入表格单元格时在 alias pipe 前加反斜杠。
 - 创建适应症页成功后在 indications markers 内补充适应症行；第一列 `适应症` 使用完整 vault wikilink `[[indication/{indication_id}.md|{中文显示名}]]`，写入表格单元格时在 alias pipe 前加反斜杠。
 - Agent 更新时保留用户添加的行、别名和备注。
 - 药品表按 `归档公司` 升序、同公司内按 `drug_id` 升序确定性重排；适应症表保持已有行顺序，新行按 `indication_id` 稳定排序后追加。只有新初始化或 pristine 空表才排序适应症表首次生成的全部行。
 ```
 
-公司表条目不代表已创建公司实体，因此不得据此创建公司文件夹。`company_id` 使用 Windows-safe 的常见公司短名且可以包含中文：中日公司通常使用常见中文短名，西方公司通常使用常见英文短名。新增药品时才创建 `{research_dir}/{company_id}/raw`、`{research_dir}/{company_id}/summary` 和 `{company_dir}/{drug_id}.md`（药品页），并更新药品表。
+公司表条目不代表已创建公司实体，因此不得据此创建公司文件夹。`company_id` 使用 Windows-safe 的常见公司短名且可以包含中文：中日公司通常使用常见中文短名，西方公司通常使用常见英文短名。新增药品时才创建 `{research_dir}/{company_id}/raw`、`{research_dir}/{company_id}/summary` 和 `{company_dir}/{drug_id}.md`（药品页），并更新药品表。raw 文件的路径、frontmatter、canonical `source` 和正文形态以 `schema/raw-spec.md` 为权威。
 
 ### 4. 验证结果
 

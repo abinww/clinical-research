@@ -1,4 +1,8 @@
-"""List clinical-research 2.0 raw files not referenced by summaries."""
+"""List clinical-research 2.0 raw files not referenced by summaries.
+
+Raw/summary pairing rules are defined by ../schema/raw-spec.md and
+../schema/summary-spec.md.
+"""
 
 from __future__ import annotations
 

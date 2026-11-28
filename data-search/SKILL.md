@@ -110,7 +110,7 @@ python {skill_dir}/../drug-trials-search/search_trials.py --drug "{drug_id}" --d
 
 ## Step 4: 排除当前药品已提取来源
 
-只读扫描 **当前药品的公司级 `raw_dir`** 中 YAML frontmatter 的 `source:`。保留 raw 中的准确 URL 字符串；本地 PDF 身份使用其持久化值（`<= 10 MiB` 为附件绝对路径 `attachments/{drug_id}@{source_label}.pdf`，`> 10 MiB` 为原 PDF 的 `Path.resolve(strict=True).as_posix()`）。不得扫描整个研究库，也不得传入或推断旧全局 `raw_dir`。
+只读扫描 **当前药品的公司级 `raw_dir`** 中 YAML frontmatter 的 `source:`。canonical source 与本地 PDF 身份以 `../schema/raw-spec.md` 为权威，只使用 raw 中持久化的准确值。不得扫描整个研究库，也不得传入或推断旧全局 `raw_dir`。
 
 ```text
 python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" --format urls --strict
@@ -118,7 +118,7 @@ python "{clinical_research_dir}/scripts/scan_sources.py" --raw-dir "{raw_dir}" -
 
 `raw_dir` 是 `resolve_only` 返回的公司级 `{research_dir}/{company_id}/raw`；目录不存在时集合为空。strict 扫描发现损坏 frontmatter、路径逃逸或配对异常时停止并报告，不得使用部分结果。
 
-以 `(company_id, drug_id, source)` 为准确重复键。当前公司布局中 canonical `source` 准确匹配的候选应剔除；其他药品下的相同来源允许跨药复用，不得阻塞。所有流程比较 raw 中同一个 canonical 值，不得用 percent-decoded URL、PDF 文件名、相对路径或反斜杠路径替代。
+准确重复键与比较方式以 `../schema/raw-spec.md` 为准。当前公司布局中 canonical `source` 准确匹配的候选应剔除；其他药品下的相同来源允许跨药复用，不得阻塞。
 
 ## Step 5: 筛选与去重
 

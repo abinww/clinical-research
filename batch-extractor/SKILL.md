@@ -14,7 +14,7 @@ description: |
 ## 输入与共享契约
 
 - `{clinical_research_dir}` 是包含顶层 `SKILL.md` 的目录。`config.yaml` 只提供绝对 `research_dir`。
-- 身份对象和路径以 `../drug-identity/SKILL.md` 为权威；summary 格式以 `../schema/summary-spec.md` 为权威；索引资格以 `../clinical-indexer/SKILL.md` 的完整门禁为准。
+- 身份对象和路径以 `../drug-identity/SKILL.md` 为权威；raw 文件身份以 `../schema/raw-spec.md` 为权威；summary 格式以 `../schema/summary-spec.md` 为权威；索引资格以 `../clinical-indexer/SKILL.md` 的完整门禁为准。
 - 读取上述契约、`data-verify/SKILL.md` 和相关 schema 后再处理。
 - 输入模式二选一：`scan`（默认，可带 `company_id`、`drug_id` 过滤器）或 `single_raw`（调用方提供一个 raw 绝对路径，只处理该文件）。
 
@@ -36,7 +36,7 @@ python {clinical_research_dir}/scripts/find_unprocessed.py --config "{config_pat
 
 第二条仅在提供过滤器时使用。无输出表示没有待处理 raw，直接报告并结束。两种模式进入后续步骤前都必须得到明确 raw 路径列表；`single_raw` 列表长度必须为 1。
 
-2. **建立上下文。** 脚本返回 `{company_id}/raw/{drug_id}@{source_label}.md`。使用 `pathlib`/harness 解析路径组件，并派生公司级 `company_dir`、`drug_page`、`raw_dir`、`summary_dir`、同名 `summary_file` 和根 `attachments_dir`。
+2. **建立上下文。** 脚本返回 `{company_id}/raw/{drug_id}@{source_label}.md`，其路径与命名须符合 `../schema/raw-spec.md`。使用 `pathlib`/harness 解析路径组件，并派生公司级 `company_dir`、`drug_page`、`raw_dir`、`summary_dir`、同名 `summary_file` 和根 `attachments_dir`。
 3. **校验身份。** 写入前读取根 `index.md`，用 `drug_id`、别名和完整 vault 路径联合确认恰好一个条目映射到 `{company_id}/{drug_id}.md`。读取药品页构造标准身份对象，必要时调用 drug-identity `resolve_only` 校验；不得从 raw 猜测身份。`companies` 如存在必须与 `company_ids` 相同。
 4. **生成 summary 并审计 URL 图片。** 读取 raw，按 summary-spec 创建唯一 `summary_file`。只纳入 raw 支持的全部适应症和试验事实，保持分组与 canonical 相对来源链接准确，不得串组或推断。URL 来源不得重新抓取或访问来源页面；只使用 raw 中实际保留、可核实的正文图片 URL/图注按 summary-spec 盘点并写入 summary。raw 未包含足以核实完整图片清单的 URL/元数据时，不能据此判定“无图片”；在 summary 中说明清单无法核实，回报 `image_status: incomplete`。
 5. **处理 PDF 图片。** 已有 raw 对应 PDF 且缺少关键图时，可用 harness/PDF 工具优先裁剪、否则保存整页到 `{research_dir}/attachments/`，并从 summary 以 `../../attachments/{file}` 引用。工具不可用或渲染失败时继续文本 summary，但不得伪造附件；列出图号/表号及原因，并将图片审计标记为 `incomplete`。

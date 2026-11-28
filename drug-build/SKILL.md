@@ -27,7 +27,7 @@ plan 文件名格式为：
 "{research_dir}/.temp/plans/search_plan_{drug_id}_{date}.md"
 ```
 
-canonical source 保持提取体系的准确值：URL 不改写大小写、查询参数、尾斜杠或编码；本地 PDF 使用持久化身份（`<= 10 MiB` 附件化后为附件绝对路径 `attachments/{drug_id}@{source_label}.pdf`，`> 10 MiB` 为 resolved absolute POSIX path）。plan 内按 canonical source 准确字符串合并；库内判重只限当前 `drug_id`，其他药品可合法复用同一来源。
+canonical source、PDF 身份和准确重复键以 `../schema/raw-spec.md` 为权威。plan 内按 canonical source 准确字符串合并；库内判重只限当前 `drug_id`，其他药品可合法复用同一来源。
 
 开始本次建库前，先扫描 `.temp/plans/search_plan_{drug_id}_*.md`：恰有一个未完成 plan 时继续使用其绝对路径；多个匹配时停止并请用户选择；没有匹配时才创建当天路径。下文 `{plan_path}` 指最终选定的绝对路径。
 

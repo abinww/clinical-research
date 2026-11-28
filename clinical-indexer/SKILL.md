@@ -15,7 +15,7 @@ description: |
 
 ## 输入与共享契约
 
-只读取 `../config.yaml` 中的 `research_dir`，不读取 `summary_dir`、`company_dir` 或 `indication_dir` 配置项：
+只读取 `../config.yaml` 中的 `research_dir`，不读取 `summary_dir`、`company_dir` 或 `indication_dir` 配置项。raw 文件身份以 `../schema/raw-spec.md` 为权威，summary 与索引输出分别以 `../schema/summary-spec.md`、`../schema/drug-spec.md`、`../schema/indication-spec.md` 和 `../schema/index-spec.md` 为权威：
 
 ```text
 root_index     = {research_dir}/index.md
@@ -101,7 +101,7 @@ Cron 从流程第 1 步开始，自行读取配置、当前 drug/indication sche
 4. 正文恰有一个二级 `## 数据一致性审核`，且为最后一个二级章节；其中审核表具有 schema 要求列、结构完整且至少一行。每行状态必须精确解析为 `PASS`、`WARN` 或 `FAIL`，禁止子串、大小写模糊匹配或自由文本推断。
 5. `drug_id` 存在，且与目录名和相邻药品页身份一致。
 6. `indications` 是非空标量字符串数组；元素唯一且符合 indication_id 语法，数量、顺序与正文 `## [{indication_id}]` 分组严格一致；不得去重或静默合并；适应症显示名以正文分组头为准，治疗线与生物标志物从正文 `试验设计` 提取。
-7. 原文链接指向同一公司的公司级 `raw/`，且符合 schema。
+7. 原文链接指向同一公司的公司级 `raw/`，raw 路径与文件身份符合 `../schema/raw-spec.md`。
 8. 经第 1 步预协调后，根索引唯一链接该 `drug_id` 到当前药品页。
 9. 审核表覆盖每个适应症分组、临床数值、试验事实和关键 cohort/方案。空状态、未知状态、畸形行、重复且冲突的审核项或无法映射 section identity 的行均失败。
 10. `verification_fail_count` 等于审核表中精确 `FAIL` 行数；可归档时计数为 `0`，所有行仅为 `PASS`/`WARN`，且表外审核结论不得声明 `FAIL`。三者不一致即失败。

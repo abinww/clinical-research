@@ -1,14 +1,7 @@
 """Copy a submitted source PDF into the vault as a source-named attachment.
 
-Size-threshold policy (used by clinical-extractor / multi-extractor):
-
-- PDF <= {max_mb} MiB: copy to ``{attachments_dir}/{stem}.pdf`` (stem is normally
-  ``{drug_id}@{source_label}``, matching the paired raw/summary filename) and print
-  ``attached {absolute_posix_path}``. The file is the canonical source; raw/ then
-  embeds it instead of storing extracted text.
-- PDF >  {max_mb} MiB: do not copy, print ``too_large {resolved_absolute_posix}``.
-  The caller keeps the old behavior (extract text into raw, source is the original path).
-
+Implements the ``<= 10 MiB`` attachment branch defined by
+../schema/raw-spec.md. The caller handles the ``> 10 MiB`` text-extraction branch.
 The copy is idempotent: an existing target is never overwritten.
 Only the Python standard library is used; the file operations are Windows-safe.
 """

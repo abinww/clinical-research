@@ -1,4 +1,8 @@
-"""Semantic Markdown discovery for the clinical-research 2.0 layout."""
+"""Semantic Markdown discovery for the clinical-research 2.0 layout.
+
+Raw and summary identity rules are defined by ../schema/raw-spec.md and
+../schema/summary-spec.md.
+"""
 
 from __future__ import annotations
 

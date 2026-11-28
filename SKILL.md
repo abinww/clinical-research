@@ -42,7 +42,7 @@ description: |
 - 扫描根目录必须排除 `indication/`、`attachments/`、`.temp/`、所有隐藏目录及其他已知基础设施目录。
 - 身份对象及路径以 `drug-identity/SKILL.md` 为权威契约；标识不唯一时询问用户，不得猜测或迁移既有归档。
 - summary 的结构、命名、来源身份和链接以 `schema/summary-spec.md` 为权威契约。
-- 用户提交的 `<= 10 MiB` 来源 PDF 存入根 `attachments/{drug_id}@{source_label}.pdf`，raw 正文只写嵌入引用；`> 10 MiB` 维持文本提取进 raw。
+- raw 的路径、frontmatter、canonical `source`、PDF 大小分流和正文形态以 `schema/raw-spec.md` 为权威。
 - summary 是否可归档以 `clinical-indexer/SKILL.md` 的完整资格门禁为准，不得用简化状态判断替代。
 
 ## 不变量与写边界

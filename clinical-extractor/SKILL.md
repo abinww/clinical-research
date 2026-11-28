@@ -17,7 +17,7 @@ description: |
 
 - 普通提取使用正式 `raw_dir`、`summary_dir` 和根 `attachments_dir`。
 - replacement 使用 orchestrator 明确提供、且同属一个 staging 根的三个对应目录。
-- `source_label`、文件名、frontmatter 和正文结构以 `../schema/summary-spec.md` 为权威契约。
+- raw 的路径、frontmatter、`source` 身份和正文形态以 `../schema/raw-spec.md` 为权威；`source_label`、summary 文件名、frontmatter 和正文结构以 `../schema/summary-spec.md` 为权威。
 
 写入前输出并确认：
 
@@ -26,7 +26,7 @@ EXTRACT WRITE GATE:
 - config_path 已读取且只有 research_dir 参与路径解析: yes
 - 身份对象与全部路径键齐全；普通路径符合正式布局，或三个写目录属于同一 replacement staging 根: yes
 - drug_page 存在: yes
-- summary-spec.md 已读取: yes
+- raw-spec.md 与 summary-spec.md 已读取: yes
 - raw 与 summary 目标文件名均为 {drug_id}@{source_label}.md: yes
 - 两个目标文件均不存在: yes
 ```
@@ -35,22 +35,14 @@ EXTRACT WRITE GATE:
 
 - 一个来源恰好创建一个 `{drug_id}@{source_label}.md` raw 和一个同名 summary；单份 summary 承载来源支持的全部适应症，不按适应症拆分。
 - 严格 create-only：不得覆盖、删除或修改任何既有 raw、summary、附件或索引引用。正式目录和 staging 目录都要求目标不存在。
-- canonical source、配对命名和 summary 来源链接严格遵守 summary-spec，不支持 v1 布局、命名或 wikilink。
-- raw 正文只能是工具返回的完整原始输出；唯一的例外是 `<= 10 MiB` 的附件化 PDF，其 raw 正文为一行嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`。summary 初写审核状态必须为 `pending/null/null`，不得自行验证。
+- canonical source 和 raw 配对命名严格遵守 `../schema/raw-spec.md`；summary 来源链接严格遵守 `../schema/summary-spec.md`，不支持 v1 布局、命名或 wikilink。
+- raw frontmatter 与正文形态按 `../schema/raw-spec.md` 写入；summary 初写审核状态必须为 `pending/null/null`，不得自行验证。
 
 ## 工作流
 
 1. **校验门禁与来源身份。** 任一门禁不是 `yes` 即停止。目标已存在时返回“发现重复”，不得覆盖、删除、修改、追加序号或清理索引，即使调用方声称已授权替换。标签冲突只能使用 trial、abstract、analysis 等语义稳定后缀，不得使用 `_2` 等序号。
 2. **提取来源。** 记录 canonical source、来源明确披露的 `published_date`、实际提取日 `created` 和来源类型；发布日期或 phase 不明写 `null`。
-3. **写入 raw。** 创建 `{raw_dir}/{drug_id}@{source_label}.md`，仅添加以下 frontmatter，随后原样保存完整工具输出（`<= 10 MiB` 的附件化 PDF 例外：正文只写嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`）：
-
-```yaml
----
-source: {准确 URL，或 PDF 的附件绝对路径（<= 10 MiB）/ resolved absolute POSIX path（> 10 MiB）}
-published_date: {YYYY-MM-DD 或 null}
-created: {YYYY-MM-DD}
----
-```
+3. **写入 raw。** 创建 `{raw_dir}/{drug_id}@{source_label}.md`，按 `../schema/raw-spec.md` 写入 frontmatter 和正文；随后原样保存完整工具输出。`<= 10 MiB` 附件化 PDF 的正文只写 raw-spec 规定的嵌入引用。
 
 4. **无数据跳过（兜底门禁）。** 来源为公司公告或新闻媒体（`source_type` 为 `company_release`，或 `other` 且为新闻/公告页）时，检查刚创建的 raw：若不含任何具体临床数值（样本量 N、ORR/PFS/OS/HR/CI、AE 发生率等），删除仅由本次创建的 raw 并返回 `无数据跳过`，不生成 summary，不写入任何文件。期刊与会议来源无数值时按提取失败处理，不适用本门禁。
 5. **盘点图片并写入 summary。** 在生成 summary 前完成来源图片盘点，按 summary-spec 将所有应收录图片写入对应适应症的 `### 临床数据图片`。URL 来源使用原图远程 URL；PDF 来源只引用实际生成的附件。若有候选图片但地址/图像未能确认，保留可确认的图号、标题和失败原因，并将图片审计标记为 `incomplete`，不得按“无图片”处理。
@@ -59,7 +51,7 @@ created: {YYYY-MM-DD}
 ### URL 提取
 
 - 优先使用当前 harness 的高级网页提取能力并包含图片，失败后使用可用网页抓取工具；403、反爬或空正文时可尝试同文官方镜像，仍失败则停止，不得由模型重建 raw。网页提取器返回了正文，不代表图片已完整提取，必须单独执行下述图片盘点。
-- URL 保存用户准确提供或工作流明确采用的 canonical final URL，不得改写；后续比较使用该持久字符串，不做 percent decode 或其他归一化。
+- URL canonical source 按 `../schema/raw-spec.md` 保存和比较。
 - raw 保存完整工具输出，不为补图片清单而改写或追加内容。
 
 #### URL 图片盘点
@@ -73,16 +65,14 @@ created: {YYYY-MM-DD}
 
 ### PDF 提取
 
-- 先按大小分流，决定 raw 的正文形态与 `source` 值：
-  - `<= 10 MiB`：运行以下脚本把 PDF 复制为根 `attachments/{drug_id}@{source_label}.pdf` 附件（与配对 raw/summary 同名）：
+- PDF 的 `10 MiB` 阈值、附件路径、canonical `source` 和 raw 正文形态以 `../schema/raw-spec.md` 为权威。
+- `<= 10 MiB` 时运行以下脚本创建附件；输出 `attached {附件绝对 POSIX 路径}` 后，按 raw-spec 固定 canonical source 并写入嵌入引用；输出 `too_large` 时转入 `> 10 MiB` 分支：
 
     ```text
     python {clinical_research_dir}/scripts/attach_pdf.py "{pdf_path}" "{attachments_dir}" "{drug_id}@{source_label}"
     ```
 
-    输出 `attached {附件绝对 POSIX 路径}` 时，canonical source 固定为该附件路径；输出 `too_large` 时按 `> 10 MiB` 分支处理。
-  - `> 10 MiB`：canonical source 固定为输入路径经 `Path.resolve(strict=True).as_posix()` 得到的绝对 POSIX 路径。预检、去重、写入和报告均使用同一值。
-- `<= 10 MiB` 的 raw 只写 frontmatter（`source` 为附件绝对路径）和一行嵌入引用 `![[attachments/{drug_id}@{source_label}.pdf]]`，不保存提取文本。
+- `> 10 MiB` 时按 raw-spec 使用原 PDF 的 resolved absolute POSIX path 作为 canonical source，并提取文本写入 raw。
 - `> 10 MiB` 的 raw 按可用性依次使用 harness/PDF 工具、系统 `pdftotext` 或 `nano-pdf`，最后可运行：
 
 ```text
@@ -96,7 +86,7 @@ python {clinical_research_dir}/scripts/pdf_extract_fallback.py "{pdf_path}"
 
 ### 内容要求
 
-- raw 正文不得压缩、总结、翻译、重排、去重、润色或补全。官方 API 补充缺失 metadata 时，只能在末尾追加注明来源和获取日期的独立章节。
+- raw 正文的完整性与允许的 metadata 附录以 `../schema/raw-spec.md` 为权威；写入时不得另行改写。
 - summary 只纳入原文支持的适应症：frontmatter `indications` 用标量 ID 列表、顺序与正文分节一致；治疗线、生物标志物与试验信息写入 `试验设计`（多试验分表）；raw 含患者基线数据时生成 `### 患者基线` 表（cohort 与核心数据对齐），无基线则省略。phase、cohort、方案、治疗线或 cutoff 不明时写“未披露”或 `null`，不得推断或串组。
 - summary 图片必须遵守 `../schema/summary-spec.md` 的纳入范围、来源地址、适应症分组和失败标记规则；URL 图只引用原图远程地址，PDF 图只引用实际生成的附件。
 
